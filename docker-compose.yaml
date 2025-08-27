@@ -1,0 +1,62 @@
+services:
+  postgresdb:
+    image: postgres:latest
+    volumes:
+      - ./entrypoint.sh:/docker-entrypoint-initdb.d/entrypoint.sh
+      - ./volumes/db/data:/var/lib/postgresql/data
+      - ./volumes/db/log:/var/log/postgresql
+    container_name: postgresdb
+    env_file:
+      - backend/.env
+    ports:
+      - 5432:5432
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U meta_db_user -d db" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: always
+
+  redis:
+    image: redis:7
+    container_name: redis
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    env_file:
+      - backend/.env
+    volumes:
+      - ./dockerfiles/redis/data:/data
+      - ./redis-config/redis.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "6379:6379"
+  
+  frontend:
+    build: ./pbm_model_interface
+    ports:
+      - "8080:80"
+    restart: always
+  
+  backend:
+    build:
+      context: ./backend
+      dockerfile: dockerfile
+    volumes:
+      - ./backend:/usr/app
+    restart: on-failure
+    expose:
+      - 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgresdb:
+        condition: service_healthy
+    command: sh -c "python3 cli.py api"
+
+  celery:
+    build:
+      context: ./backend
+      dockerfile: dockerfile
+    volumes:
+      - ./backend:/usr/app
+    restart: on-failure
+    command: celery -A app.pbm_model.optimization_simulation worker --loglevel=INFO --pool=prefork -c 4
