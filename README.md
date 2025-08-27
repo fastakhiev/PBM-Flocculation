@@ -1,7 +1,7 @@
 ## Project launch
 1. **Clone the repository**
     ```shell
-    git clone https://github.com/fastakhiev/PBM-Flocculation-Tool
+    git clone https://github.com/fastakhiev/PBM-Flocculation
     ```
    
 2. **Create .env file in backend/.env**
