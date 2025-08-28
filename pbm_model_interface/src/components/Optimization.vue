@@ -16,6 +16,10 @@ const optimizationAlgorithms = ref(['DEA', 'GA']);
 const field4 = ref(optimizationAlgorithms.value[0]);
 const dosageOptions = ref(['2', '6', '8']);
 const field5 = ref(dosageOptions.value[0]);
+const showHint1 = ref(false);
+const showHint2 = ref(false);
+
+
 
 
 const fileInputInit = ref<HTMLInputElement | null>(null);
@@ -295,6 +299,62 @@ function saveFileToLocalStorage(file: File) {
   localStorage.setItem("fileName", file.name);
   reader.readAsDataURL(file);
 }
+
+function blockInvalidKeys1(e: KeyboardEvent) {
+  if (['-', '+', 'e', 'E'].includes(e.key)) {
+    e.preventDefault();
+  }
+}
+
+function sanitizePositive1(e: Event) {
+  const target = e.target as HTMLInputElement;
+  const raw = target.value;
+
+  if (raw === '') {
+    field1.value = '';
+    showHint1.value = false;
+    return;
+  }
+
+  const num = Number(raw);
+
+  if (!isFinite(num) || num <= 0) {
+    field1.value = '';
+    target.value = '';
+    showHint1.value = true;
+  } else {
+    field1.value = num.toString();
+    showHint1.value = false;
+  }
+}
+
+function blockInvalidKeys2(e: KeyboardEvent) {
+  if (['-', '+', 'e', 'E'].includes(e.key)) {
+    e.preventDefault();
+  }
+}
+
+function sanitizePositive2(e: Event) {
+  const target = e.target as HTMLInputElement;
+  const raw = target.value;
+
+  if (raw === '') {
+    field2.value = '';
+    showHint2.value = false;
+    return;
+  }
+
+  const num = Number(raw);
+
+  if (!isFinite(num) || num <= 0) {
+    field2.value = '';
+    target.value = '';
+    showHint2.value = true;
+  } else {
+    field2.value = num.toString();
+    showHint2.value = false;
+  }
+}
 </script>
 
 <template>
@@ -305,11 +365,17 @@ function saveFileToLocalStorage(file: File) {
 
       <div class="form-group">
         <label for="field1">Shear rate (G) s⁻¹</label>
-        <input id="field1" v-model="field1" type="number" step="any" placeholder="Enter the G" required />
+        <input id="field1" v-model="field1" min=1 type="number" step="any" placeholder="Enter the G" required @keydown="blockInvalidKeys1" @input="sanitizePositive1"/>
+        <small v-if="showHint1" class="text-red-600">
+       The value must be greater than 0
+      </small>
       </div>
       <div class="form-group">
         <label for="field2">Primary partical diameter (d₀) nm</label>
-        <input id="field2" v-model="field2" type="number" step="any" placeholder="Enter the do" required />
+        <input id="field2" v-model="field2" min=1 type="number" step="any" placeholder="Enter the d0" required @keydown="blockInvalidKeys2" @input="sanitizePositive2"/>
+        <small v-if="showHint2" class="text-red-600">
+       The value must be greater than 0
+      </small>
       </div>
         <div class="form-group">
         <label for="field3">Cationic polyacrylamide (C-PAM) type</label>
@@ -445,7 +511,7 @@ function saveFileToLocalStorage(file: File) {
             <li><span>gama </span><span>{{ taskResult.gama.toFixed(4) }}</span></li>
         </ul>
         <button @click="saveResults">
-          {{ 'Save' }}
+          {{ 'Save & simulate PBM' }}
         </button>
       </div>
 <div v-if="showSimulationButton" class="optimization-info">
@@ -973,6 +1039,11 @@ select::-ms-expand {
 
 .modal-button.confirm:hover {
   background-color: #c0392b;
+}
+
+.text-red-600 {
+  margin-left: 10px;
+  color: #d32f2f;
 }
 
 .select-wrapper {
