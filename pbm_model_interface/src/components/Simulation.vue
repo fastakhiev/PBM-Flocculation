@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, onUnmounted } from 'vue';
+import { ref, onMounted, watch, onUnmounted, nextTick } from 'vue';
 import axios from 'axios';
 import ComparisonChart from './ComparisonChart.vue';
 import HistogramChart from './HistogramChart.vue';
@@ -100,8 +100,9 @@ watch(simulationResult, (newResult) => {
 });
 
 
-onMounted(() => {
+onMounted(async () => {
   checkOptimization();
+  await nextTick();
   const restoredFile = getFileFromLocalStorage();
   if (restoredFile) {
     handleFile(restoredFile);
