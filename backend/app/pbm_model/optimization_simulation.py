@@ -40,9 +40,9 @@ def optimization_task(self, csv_str_exp, csv_str_init, g, do, e1_index, optimiza
         G_val = float(g)
         do_val = float(do)
 
-        if optimization_algorithm == "DEA":
+        if optimization_algorithm == "Differential Evolution Algorithm (DEA)":
             results = run_optimization(csv_data_exp, G_val, do_val, csv_data_init["initial_distribution"].tolist(), e1_index, dosage)
-        elif optimization_algorithm == "GA":
+        elif optimization_algorithm == "Genetic Algorithm (GA)":
             results = run_optimization_ga(csv_data_exp, G_val, do_val, csv_data_init["initial_distribution"].tolist(), e1_index, dosage)
 
         texp = csv_data_exp['Time(min)'].values
