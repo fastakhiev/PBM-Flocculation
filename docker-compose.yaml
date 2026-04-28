@@ -1,6 +1,6 @@
 services:
   postgresdb:
-    image: postgres:latest
+    image: postgres:13
     volumes:
       - ./entrypoint.sh:/docker-entrypoint-initdb.d/entrypoint.sh
       - ./volumes/db/data:/var/lib/postgresql/data
