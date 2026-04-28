@@ -371,7 +371,7 @@ function sanitizePositive2(e: Event) {
       </small>
       </div>
       <div class="form-group">
-        <label for="field2">Primary partical diameter (d₀) nm</label>
+        <label for="field2">Primary particle diameter (d₀) nm</label>
         <input id="field2" v-model="field2" min=1 type="number" step="any" placeholder="Enter the d0" required @keydown="blockInvalidKeys2" @input="sanitizePositive2"/>
         <small v-if="showHint2" class="text-red-600">
        The value must be greater than 0
@@ -479,7 +479,7 @@ function sanitizePositive2(e: Event) {
       </div>
       
       
-      <button type="submit" :disabled="isLoading || (!selectedFileExp && !selectedFileInit)">
+      <button type="submit" @click="handleSubmit" :disabled="isLoading || (!selectedFileExp && !selectedFileInit)">
         {{ isLoading ? 'Processing...' : 'Optimize' }}
       </button>
     </form>

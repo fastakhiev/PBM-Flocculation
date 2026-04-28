@@ -364,7 +364,7 @@ onUnmounted(() => {
       <div v-show="simulationResult" class="results-dashboard">
         <div class="charts-grid">
           <div class="chart-card">
-            <h3 class="chart-title">Fractal Dimension (dF) vs Time</h3>
+            <h3 class="chart-title">Scattering exponent (SE) vs Time</h3>
             <ComparisonChart v-if="chartData2" :chartData="chartData2"/>
           </div>
           <div class="chart-card">
