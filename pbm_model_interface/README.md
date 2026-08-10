@@ -1,5 +1,14 @@
-# Vue 3 + TypeScript + Vite
+# PBM Flocculation Interface
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Vue 3 and TypeScript interface for the PBM Flocculation desktop application.
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+```bash
+npm ci
+npm run dev
+npm run build
+```
+
+The development server proxies `/api` to `http://127.0.0.1:8000`. Production
+assets are served by the embedded FastAPI application or by the maintained
+nginx container. Scientific protocol and release instructions are in the root
+README.

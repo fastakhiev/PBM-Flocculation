@@ -112,7 +112,7 @@ onMounted(async () => {
 
 async function checkOptimization() {
   try {
-    const response = await axios.get('api/check_optimization');
+    const response = await axios.get('/api/check_optimization');
     if (response.data.response) {
       showSimulationData.value = true;
       optimizationInfo.value = response.data;
@@ -137,19 +137,24 @@ function listenForSimulationUpdates(taskId: string) {
 
     if (data.status === 'completed') {
       isLoading.value = false;
-      simulationResult.value = data.result;
+      if (data.result?.success === false) {
+        simulationResult.value = null;
+        error.value = data.result.message || 'Simulation failed.';
+      } else {
+        simulationResult.value = data.result;
+      }
       eventSource?.close();
       eventSource = null;
     } else if (data.status === 'failed') {
       isLoading.value = false;
-      error.value = `Ошибка выполнения симуляции: ${data.error || 'Неизвестная ошибка'}`;
+      error.value = `Simulation failed: ${data.error || 'Unknown error'}`;
       eventSource?.close();
       eventSource = null;
     }
   };
 
   eventSource.onerror = () => {
-    error.value = 'Произошла ошибка сетевого соединения с сервером.';
+    error.value = 'The connection to the local calculation service was lost.';
     isLoading.value = false;
     eventSource?.close();
     eventSource = null;
@@ -173,11 +178,11 @@ function getFileFromLocalStorage(): File | null {
 
 
 function handleFile(file: File | null) {
-  if (file && file.type === 'text/csv') {
+  if (file && file.name.toLowerCase().endsWith('.csv')) {
     selectedFile.value = file;
     error.value = null;
   } else if (file) {
-    error.value = 'Пожалуйста, выберите файл в формате .csv';
+    error.value = 'Select a .csv file.';
     clearFile();
   }
 }
@@ -206,6 +211,20 @@ async function backToOptimization() {
   
 }
 
+async function downloadOptimizationReport() {
+  try {
+    const response = await axios.get('/api/optimization_report', { responseType: 'blob' });
+    const url = URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `optimization-${optimizationInfo.value.audit_run_id || 'report'}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch (err: any) {
+    error.value = err.response?.data?.detail || 'Could not download the optimization report.';
+  }
+}
+
 async function handleStopSimulation() {
   const taskId = localStorage.getItem('simulationTaskId');
   if (!taskId) return;
@@ -215,16 +234,16 @@ async function handleStopSimulation() {
     isLoading.value = false;
     eventSource?.close();
     eventSource = null; 
-    error.value = 'You sopped simulation';
+    error.value = 'Simulation was stopped.';
   } catch (err) {
     console.error("Failed to stop simulation:", err);
-    error.value = 'Не удалось отправить команду на остановку симуляции.';
+    error.value = 'Could not stop the simulation.';
   }
 }
 
 async function handleStartSimulation() {
   if (!selectedFile.value) {
-    error.value = 'Пожалуйста, выберите CSV файл для загрузки.';
+    error.value = 'Select an experimental CSV file.';
     return;
   }
   isLoading.value = true;
@@ -243,14 +262,14 @@ async function handleStartSimulation() {
     const response = await axios.post('/api/start_simulation', formData);
 
     const taskId = response.data;
-    if (!taskId) throw new Error('Не удалось получить ID задачи от сервера.');
+    if (!taskId) throw new Error('The calculation service did not return a task ID.');
 
     localStorage.setItem('simulationTaskId', taskId);
 
     listenForSimulationUpdates(taskId);
   } catch (err: any) {
     console.log(err);
-    error.value = err.response?.data?.detail || err.response?.data?.message || 'Не удалось запустить симуляцию.';
+    error.value = err.response?.data?.detail || err.response?.data?.message || 'Could not start simulation.';
     isLoading.value = false;
   }
 }
@@ -273,7 +292,7 @@ onUnmounted(() => {
 
       <form v-if="isLoaded" @submit.prevent="handleStartSimulation" class="task-form">
         <div class="form-group">
-          <label>Upload Data File</label>
+          <label>Upload experimental (.csv) file</label>
           <label
             for="file-upload"
             class="file-uploader"
@@ -305,7 +324,7 @@ onUnmounted(() => {
           <table class="result-table">
             <tbody>
               <tr>
-                <td style="font-weight: bold;">Parametrs</td>
+                <td style="font-weight: bold;">Parameters</td>
                 <td style="font-weight: bold;">Values</td>
                 <td style="font-weight: bold;">Units</td>
               </tr>
@@ -316,17 +335,22 @@ onUnmounted(() => {
               </tr>
               <tr>
                 <td>Fragmentation rate parameter (B)</td>
-                <td>{{ optimizationInfo.b.toFixed(2) }}</td>
+                <td>{{ optimizationInfo.b.toFixed(1) }}</td>
                 <td>-</td>
               </tr>
               <tr>
                 <td>Kinetic parameter for flocs re-structuring (&#947;)</td>
                 <td>{{ optimizationInfo.gama.toFixed(2) }}</td>
-                <td>-</td>
+                <td>min⁻¹</td>
               </tr>
               <tr>
                 <td>Optimization time</td>
                 <td>{{ optimizationInfo.optimization_time.toFixed(2) }}</td>
+                <td>s</td>
+              </tr>
+              <tr>
+                <td>Simulation time</td>
+                <td>{{ simulationResult?.simulation_time != null ? simulationResult.simulation_time.toFixed(2) : '-' }}</td>
                 <td>s</td>
               </tr>
             </tbody>
@@ -371,16 +395,17 @@ onUnmounted(() => {
             <h3 class="chart-title">d43 vs Time</h3>
              <ComparisonChart v-if="chartData1" :chart-data="chartData1" />
           </div>
-          <div class="chart-card">
-            <h3 class="chart-title"  v-if="showSimulationData">{{ "Optimum data for " + optimizationInfo.cpamm }}</h3>
-             <HistogramChart v-if="showSimulationData" :chart-data="optimizationInfo.optimum_data" />
+          <div v-if="showSimulationData && optimizationInfo.published_reference_data" class="chart-card">
+            <h3 class="chart-title">{{ optimizationInfo.published_reference_label + ': ' + optimizationInfo.cpamm }}</h3>
+            <p class="reference-source">DOI: {{ optimizationInfo.published_reference_doi }}</p>
+             <HistogramChart :chart-data="optimizationInfo.published_reference_data" />
           </div>
           <div v-if="showSimulationData" class="chart-card">
             <h3 class="chart-title">Optimization data</h3>
                <table class="result-table">
                   <tbody>
                     <tr>
-                      <td style="font-weight: bold;">Parametrs</td>
+                      <td style="font-weight: bold;">Parameters</td>
                       <td style="font-weight: bold;">Values</td>
                       <td style="font-weight: bold;">Units</td>
                     </tr>
@@ -411,6 +436,9 @@ onUnmounted(() => {
                     </tr>
                   </tbody>
                 </table>
+                <button type="button" class="report-button" @click="downloadOptimizationReport">
+                  Download reproducibility report
+                </button>
           </div>
         </div>
       </div>
@@ -491,6 +519,7 @@ onUnmounted(() => {
 .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem; }
 .chart-card { background: #fff; padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); display: flex; flex-direction: column; }
 .chart-title { margin-top: 0; margin-bottom: 1rem; font-size: 1.1rem; color: #333; }
+.reference-source { margin: -0.5rem 0 1rem; color: #66707a; font-size: 0.85rem; }
 .graph-placeholder { width: 100%; flex-grow: 1; min-height: 300px; background-color: #f8f9fa; border: 1px dashed #ccc; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #aaa; font-style: italic; }
 .graph-placeholder::before { content: 'Chart Area'; }
 .file-uploader { display: block; padding: 2rem; border: 2px dashed #ccc; border-radius: 8px; cursor: pointer; text-align: center; color: #555; transition: all 0.2s ease-in-out; }
@@ -532,6 +561,15 @@ button:disabled { background-color: #a5d6c1; cursor: not-allowed; }
 }
 .back-button:hover:not(:disabled) {
   background-color: #5a6268;
+}
+.report-button {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #56606b;
+  border-radius: 6px;
+  color: #2f3740;
+  background: #fff;
+  cursor: pointer;
 }
 
 .result-table {

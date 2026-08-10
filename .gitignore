@@ -23,6 +23,7 @@ lib
 lib64
 venv*/
 .venv/
+.venv*/
 dockerfiles/
 pyvenv*/
 pip-wheel-metadata/
@@ -64,7 +65,8 @@ docs/reference
 .*.sw[po]
 .build
 .ve
-# .env
+.env
+**/.env
 .cache
 .pytest
 .bootstrap
@@ -76,3 +78,18 @@ docs/reference
 .mypy_cache/
 /deploy/
 /.env
+
+# Local application state and generated packages
+*.sqlite3
+backend/build/
+backend/dist/
+pbm_model_interface/dist/
+/release/
+
+# Unapproved source documents and development screenshots
+/paper.pdf
+/PCC_test.docx
+/img*.png
+/img_*.png
+/PCC_test_*.csv
+/one_column.csv

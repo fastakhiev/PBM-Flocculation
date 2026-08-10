@@ -1,143 +1,243 @@
-# --- START OF FILE pbm_tasks.py ---
-
-import pandas as pd
+import asyncio
+import hashlib
+import logging
+import platform
+import time
+from importlib.metadata import PackageNotFoundError, version
 from io import StringIO
-import json
-from app.core.celery_worker import celery
-from app.core.redis_sync import redis_sync
-from scipy.integrate import solve_ivp
-from app.pbm_model.optimization import run_optimization, run_optimization_ga
-from app.pbm_model.realtime import run_realtime_simulation
-from app.pbm_model.metrics import calculate_gof
-from app.pbm_model.aggregationdF import aggregationdF
-from app.pbm_model.convertVDM import convertVMD
-from app.pbm_model.alphaest import alphaest
+
 import numpy as np
+import pandas as pd
+import scipy
+
+from app.core.jobs import Job, cancel_job, create_job, get_job, run_job_in_thread
+from app.pbm_model.optimization import PROTOCOL_VERSION, run_optimization, run_optimization_ga
+from app.pbm_model.realtime import run_realtime_simulation
+from app.version import APP_VERSION
 
 
-def check_status(task_id):
-    c = celery.AsyncResult(task_id)
-    return c
+_PREVIOUS_STATE: dict | None = None
 
 
-def stop_task(task_id):
-    redis_sync.set(f"stop:{task_id}", 1)
-
-    result = celery.AsyncResult(task_id, app=celery)
-    result.revoke(terminate=True, signal="SIGKILL")
-
-
-@celery.task(bind=True)
-def optimization_task(self, csv_str_exp, csv_str_init, g, do, e1_index, optimization_algorithm, dosage):
+def _distribution_version(distribution: str, fallback: str) -> str:
     try:
-        csv_data_init = pd.read_csv(StringIO(csv_str_init), sep=';', engine='python')
-        csv_data_exp = pd.read_csv(StringIO(csv_str_exp), sep=';', skiprows=2, engine='python')
-        for col in ['Time(min)', 'd43', 'DF']:
-            if col in csv_data_exp.columns:
-                csv_data_exp[col] = pd.to_numeric(csv_data_exp[col].astype(str).str.replace(',', '.'), errors='coerce')
-        csv_data_exp.dropna(inplace=True)
+        return version(distribution)
+    except PackageNotFoundError:
+        return fallback
 
+
+def check_status(task_id: str) -> Job | None:
+    return get_job(task_id)
+
+
+def stop_task(task_id: str) -> bool:
+    return cancel_job(task_id)
+
+
+def _read_experimental_csv(csv_text: str) -> tuple[pd.DataFrame, float]:
+    raw = pd.read_csv(StringIO(csv_text), sep=";", skiprows=2, engine="python", dtype=str)
+    raw.columns = [str(column).strip().lstrip("\ufeff") for column in raw.columns]
+    required = ["Time(min)", "d43", "DF"]
+    missing = [column for column in required if column not in raw.columns]
+    if missing:
+        raise ValueError(f"Experimental CSV is missing columns: {', '.join(missing)}")
+    time_labels = raw["Time(min)"].fillna("").str.strip().str.lower().str.replace("_", " ")
+    df_max_rows = time_labels.isin({"df max", "dfmax"})
+    if int(df_max_rows.sum()) != 1:
+        raise ValueError("Experimental CSV must contain exactly one 'dF max' metadata row.")
+    df_max_value = str(raw.loc[df_max_rows, "DF"].iloc[0]).strip().replace(",", ".")
+    try:
+        df_max = float(df_max_value)
+    except ValueError as error:
+        raise ValueError("The DF value in the 'dF max' row must be numeric.") from error
+    if not np.isfinite(df_max) or df_max <= 0:
+        raise ValueError("DF_max must be a positive finite value.")
+
+    measurement_rows = raw.loc[~df_max_rows, required].copy()
+    measurement_rows = measurement_rows.dropna(how="all")
+    for column in required:
+        measurement_rows[column] = pd.to_numeric(
+            measurement_rows[column].astype(str).str.strip().str.replace(",", "."), errors="coerce"
+        )
+    if measurement_rows.isna().any(axis=None):
+        raise ValueError("Every experimental measurement must contain numeric Time(min), d43, and DF values.")
+    measurements = measurement_rows.astype(float)
+    if len(measurements) < 5:
+        raise ValueError(
+            "Experimental CSV must contain at least five complete measurements "
+            "so the three-parameter GOF has positive degrees of freedom."
+        )
+    measurements.reset_index(drop=True, inplace=True)
+    times = measurements["Time(min)"].to_numpy(dtype=float)
+    if not np.isclose(times[0], 0.0, rtol=0.0, atol=1e-12):
+        raise ValueError("Experimental time must start at 0 minutes.")
+    if np.any(np.diff(times) <= 0):
+        raise ValueError("Experimental time must increase strictly without duplicate values.")
+    if np.any(measurements[["d43", "DF"]].to_numpy(dtype=float) <= 0):
+        raise ValueError("Experimental d43 and DF values must be positive.")
+    return measurements, df_max
+
+
+def _read_initial_moments(csv_text: str) -> np.ndarray:
+    data = pd.read_csv(StringIO(csv_text), sep=";", engine="python")
+    moment_columns = [f"M{index}" for index in range(5)]
+    if all(column in data.columns for column in moment_columns):
+        moments = np.array(
+            [float(str(data.loc[data.index[0], column]).replace(",", ".")) for column in moment_columns]
+        )
+    elif "value" in data.columns:
+        moments = pd.to_numeric(
+            data["value"].astype(str).str.replace(",", "."), errors="coerce"
+        ).dropna().to_numpy(dtype=float)
+        if moments.size != 5:
+            raise ValueError("The value column must contain exactly five rows: M0, M1, M2, M3, M4.")
+    elif "initial_distribution" in data.columns:
+        raise ValueError(
+            "The uploaded initial_distribution belongs to the discrete PBM. "
+            "The EQMOM model requires the experimental initial moments M0, M1, M2, M3, M4 used in the paper."
+        )
+    else:
+        raise ValueError(
+            "Initial CSV must contain either a value column with five rows or the five columns M0, M1, M2, M3, M4."
+        )
+    if moments.shape != (5,) or np.any(~np.isfinite(moments)) or np.any(moments <= 0):
+        raise ValueError("Initial EQMOM moments must be five positive finite values.")
+    return moments
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _optimization_task_impl(
+    csv_str_exp,
+    csv_str_init,
+    g,
+    do,
+    e1_index,
+    optimization_algorithm,
+    dosage,
+    experimental_filename,
+    moments_filename,
+    *,
+    cancel_event=None,
+):
+    try:
+        csv_data_exp, df_max = _read_experimental_csv(csv_str_exp)
         G_val = float(g)
         do_val = float(do)
+        moments = _read_initial_moments(csv_str_init)
 
+        if not np.isfinite(G_val) or G_val <= 0 or not np.isfinite(do_val) or do_val <= 0:
+            raise ValueError("Shear rate and primary particle diameter must be positive finite values.")
+
+        cancel_check = cancel_event.is_set if cancel_event is not None else None
+        args = (csv_data_exp, G_val, do_val, moments, df_max, e1_index, dosage, cancel_check)
         if optimization_algorithm == "Differential Evolution Algorithm (DEA)":
-            results = run_optimization(csv_data_exp, G_val, do_val, csv_data_init["initial_distribution"].tolist(), e1_index, dosage)
+            results = run_optimization(*args)
         elif optimization_algorithm == "Genetic Algorithm (GA)":
-            results = run_optimization_ga(csv_data_exp, G_val, do_val, csv_data_init["initial_distribution"].tolist(), e1_index, dosage)
-
-        texp = csv_data_exp['Time(min)'].values
-        dexp = csv_data_exp['d43'].values
-
-        imax, x, y = 30, 0.1, 0.1
-        a_dist = np.array(csv_data_init["initial_distribution"].tolist())
-        b_dist = np.zeros(imax - len(a_dist))
-        no = np.concatenate([a_dist, b_dist])
-        dFo = csv_data_exp['DF'].values[0]
-        dFmax_str = str(csv_data_exp.iloc[-1, 2])
-        dFmax = pd.to_numeric(dFmax_str.replace(',', '.'), errors='coerce')
-
-        nref_initial = np.where(no > 0, no, 1)
-        dFref_initial = dFo
-        nonorm_initial = no / nref_initial
-        dFnorm_initial = dFo / dFref_initial
-        dcurrent_initial = convertVMD(no, dFo, do_val)
-        Yo = np.concatenate((nonorm_initial, np.array([dFnorm_initial]))).flatten()
-
-        Alpha_opt = alphaest(x, y, imax, results['amax'])
-
-        sol = solve_ivp(
-            aggregationdF, [texp[0], texp[-1]], Yo, method='BDF', t_eval=texp,
-            args=(Alpha_opt, results['B'], G_val, dcurrent_initial, dFmax, do_val,
-                  nref_initial, dFref_initial, results['gama'], imax),
-            rtol=1e-5, atol=1e-6
-        )
-
-        d_model = []
-        for i in range(len(texp)):
-            no_i = sol.y[:imax, i] * nref_initial
-            dFo_i = sol.y[imax, i] * dFref_initial
-            vmd_i = convertVMD(no_i, dFo_i, do_val)
-            d_model.append(vmd_i * 1e-3)
-        d_model = np.array(d_model)
-
-        gof_value = calculate_gof(dexp, d_model)
-        results['gof'] = gof_value
-
-        print(f"Goodness of Fit (GoF) = {gof_value:.2f}%")
-
-        redis_sync.set(str(self.request.id), json.dumps(results))
-        return results
-
-    except Exception as e:
-        error_result = {"success": False, "message": str(e)}
-        redis_sync.set(str(self.request.id), json.dumps(error_result))
-        return error_result
-
-
-@celery.task(bind=True)
-def simulation_task(self, opt_params, G, do, csv_str, mode = "realtime"):
-    try:
-
-        if mode == 'realtime':
-            init_state = redis_sync.get("previous")
-            df_test_raw = pd.read_csv(StringIO(csv_str), sep=';', skiprows=2, engine='python')
-            last_row = df_test_raw.iloc[-1]
-            dFmax_val_str = str(last_row.values[2]) if len(last_row.values) > 2 else '0'
-            dFmax_val = pd.to_numeric(dFmax_val_str.replace(',', '.'), errors='coerce')
-            df_test_clean = df_test_raw.iloc[:-1].copy()
-            for col in ['Time(min)', 'd43', 'DF']:
-                df_test_clean[col] = pd.to_numeric(df_test_clean[col].astype(str).str.replace(',', '.'),
-                                                   errors='coerce')
-            df_test_clean.dropna(inplace=True)
-
-            if init_state is not None:
-                loaded_init_state = json.loads(init_state)
-                df_test_clean['Time(min)'] += loaded_init_state['t']
-            else:
-                loaded_init_state = None
-
-            results_df, final_state = run_realtime_simulation(
-                opt_params,
-                df_test_clean,
-                dFmax_val=dFmax_val,
-                G=float(G),
-                do=float(do),
-                initial_state=loaded_init_state
-            )
+            results = run_optimization_ga(*args)
         else:
-            raise ValueError("")
+            raise ValueError("Unknown optimization algorithm")
 
-        redis_sync.set(str(self.request.id), json.dumps({
+        if not results.get("success"):
+            return results
+        results["gof"] = results["metrics"]["d43"]["gof_percent"]
+        results["provenance"] = {
+            "software_version": APP_VERSION,
+            "protocol_version": PROTOCOL_VERSION,
+            "experimental_file": experimental_filename,
+            "moments_file": moments_filename,
+            "experimental_sha256": _sha256_text(csv_str_exp),
+            "moments_sha256": _sha256_text(csv_str_init),
+            "runtime": {
+                "python": platform.python_version(),
+                "operating_system": platform.platform(),
+                "numpy": np.__version__,
+                "scipy": scipy.__version__,
+                "pandas": pd.__version__,
+                "geneticalgorithm": _distribution_version("geneticalgorithm", "1.0.2"),
+            },
+        }
+        return results
+    except Exception:
+        logging.exception("EQMOM optimization task failed")
+        raise
+
+
+def _simulation_task_impl(opt_params, G, do, csv_str, mode="realtime", *, cancel_event=None):
+    global _PREVIOUS_STATE
+    start_time = time.monotonic()
+    try:
+        _PREVIOUS_STATE = None
+        if mode != "realtime":
+            raise ValueError("Unknown simulation mode")
+        experimental, df_max = _read_experimental_csv(csv_str)
+        relative_time = experimental["Time(min)"].to_numpy(dtype=float)
+        relative_time -= relative_time[0]
+        results_df, _ = run_realtime_simulation(
+            opt_params,
+            experimental,
+            dFmax_val=df_max,
+            G=float(G),
+            do=float(do),
+            initial_state=None,
+            cancel_check=cancel_event.is_set if cancel_event is not None else None,
+        )
+        return {
             "time": results_df["time"].tolist(),
             "VMD_corrected": results_df["VMD_corrected"].tolist(),
             "DF_corrected": results_df["DF_corrected"].tolist(),
-            "time_exp": df_test_clean["Time(min)"].tolist(),
-            "d43_exp": df_test_clean["d43"].tolist(),
-            "df_exp": df_test_clean["DF"].tolist()
-        }))
-        return None
+            "time_exp": relative_time.tolist(),
+            "d43_exp": experimental["d43"].tolist(),
+            "df_exp": experimental["DF"].tolist(),
+            "simulation_time": round(time.monotonic() - start_time, 2),
+        }
+    except Exception as error:
+        logging.exception("EQMOM simulation task failed")
+        return {"success": False, "message": str(error)}
 
-    except Exception as e:
-        error_result = {"success": False, "message": str(e)}
-        redis_sync.set(str(self.request.id), json.dumps(error_result))
-        return error_result
+
+async def optimization_task(
+    csv_str_exp,
+    csv_str_init,
+    g,
+    do,
+    e1_index,
+    optimization_algorithm,
+    dosage,
+    experimental_filename,
+    moments_filename,
+) -> str:
+    job = create_job()
+    asyncio.create_task(
+        run_job_in_thread(
+            job,
+            _optimization_task_impl,
+            csv_str_exp,
+            csv_str_init,
+            g,
+            do,
+            e1_index,
+            optimization_algorithm,
+            dosage,
+            experimental_filename,
+            moments_filename,
+        )
+    )
+    return job.id
+
+
+async def simulation_task(opt_params, G, do, csv_str, mode="realtime") -> str:
+    job = create_job()
+    asyncio.create_task(run_job_in_thread(job, _simulation_task_impl, opt_params, G, do, csv_str, mode))
+    return job.id
+
+
+def reset_previous_state() -> None:
+    global _PREVIOUS_STATE
+    _PREVIOUS_STATE = None
+
+
+def has_previous_state() -> bool:
+    return _PREVIOUS_STATE is not None

@@ -1,1 +1,5 @@
 Generic single-database configuration.
+Historical Alembic migrations from the former PostgreSQL/Ormar deployment are
+retained only for traceability. The maintained desktop and Docker application
+uses the version-tolerant SQLite schema initializer in `app/core/db.py`; these
+migrations are not part of the runtime or release build.

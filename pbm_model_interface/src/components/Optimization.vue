@@ -61,7 +61,7 @@ watch(field3, (newCpamm) => {
       field5.value = dosageOptions.value[0];
       break;
     case 'E1':
-      dosageOptions.value = ['8'];
+      dosageOptions.value = ['4', '6', '8'];
       field5.value = dosageOptions.value[0];
       break;
     case 'E1+':
@@ -101,7 +101,7 @@ onMounted(() => {
 
 async function checkOptimization() {
   try {
-    const response = await axios.get('api/check_optimization');
+    const response = await axios.get('/api/check_optimization');
     if (response.data.response) {
       showSimulationButton.value = true;
       optimizationInfo.value = response.data;
@@ -113,7 +113,7 @@ async function checkOptimization() {
 
 
 function handleFileExp(file: File | null) {
-  if (file && file.type === 'text/csv') {
+  if (file && file.name.toLowerCase().endsWith('.csv')) {
     selectedFileExp.value = file;
     error.value = null; 
   } else if (file) {
@@ -123,7 +123,7 @@ function handleFileExp(file: File | null) {
 }
 
 function handleFileInit(file: File | null) {
-  if (file && file.type === 'text/csv') {
+  if (file && file.name.toLowerCase().endsWith('.csv')) {
     selectedFileInit.value = file;
     error.value = null; 
   } else if (file) {
@@ -179,20 +179,31 @@ function listenForTaskUpdates(taskId: string) {
     if (data.status === 'completed') {
       isLoading.value = false;
       isPaused.value = false;
-      taskResult.value = data.result;
+      if (data.result?.success === false) {
+        taskResult.value = null;
+        error.value = data.result.message || 'Optimization failed.';
+      } else {
+        taskResult.value = data.result;
+      }
       stopTimer();
       eventSource?.close();
     } else if (data.status === 'failed') {
       isLoading.value = false;
       isPaused.value = false;
-      error.value = `Ошибка выполнения задачи: ${data.error || 'Неизвестная ошибка'}`;
+      error.value = `Optimization failed: ${data.error || 'Unknown error'}`;
+      stopTimer();
+      eventSource?.close();
+    } else if (data.status === 'cancelled') {
+      isLoading.value = false;
+      isPaused.value = false;
+      error.value = 'Optimization was cancelled.';
       stopTimer();
       eventSource?.close();
     }
   };
 
   eventSource.onerror = () => {
-    error.value = 'Произошла ошибка сетевого соединения с сервером.';
+    error.value = 'The connection to the local calculation service was lost.';
     isLoading.value = false;
     isPaused.value = false;
     stopTimer();
@@ -204,8 +215,8 @@ function listenForTaskUpdates(taskId: string) {
 async function saveResults() {
   const taskId = localStorage.getItem('taskId');
   await axios.post('/api/save_optimization_results', { task_id: taskId });
-  saveFileToLocalStorage(selectedFileExp.value!);
-  router.push("/simulation");
+  await saveFileToLocalStorage(selectedFileExp.value!);
+  await router.push("/simulation");
 }
 
 async function handleStop() {
@@ -218,10 +229,10 @@ async function handleStop() {
     isPaused.value = false;
     stopTimer();
     eventSource?.close();
-    error.value = 'You have stopped optimisation';
+    error.value = 'Optimization was stopped.';
   } catch (err) {
     console.error("Failed to stop optimization:", err);
-    error.value = 'Не удалось отправить команду на остановку.';
+    error.value = 'Could not stop the optimization.';
   }
 }
 
@@ -232,11 +243,11 @@ function simulationButton() {
 
 async function handleSubmit() {
   if (!selectedFileExp.value) {
-    error.value = 'Пожалуйста, выберите CSV файл для загрузки.';
+    error.value = 'Select an experimental CSV file.';
     return;
   }
   if (!selectedFileInit.value) {
-    error.value = 'Пожалуйста, выберите CSV файл для загрузки.';
+    error.value = 'Select an initial-moments CSV file.';
     return;
   }
   isLoading.value = true;
@@ -259,11 +270,11 @@ async function handleSubmit() {
     const response = await axios.post('/api/start_optimize', formData);
     const taskId = response.data;
     localStorage.setItem('taskId', taskId);
-    if (!taskId) throw new Error('Не удалось получить ID задачи от сервера.');
+    if (!taskId) throw new Error('The calculation service did not return a task ID.');
     
     listenForTaskUpdates(taskId);
   } catch (err: any) {
-    error.value = err.response?.data?.detail || err.response?.data?.message || 'Не удалось создать задачу.';
+    error.value = err.response?.data?.detail || err.response?.data?.message || 'Could not start optimization.';
     isLoading.value = false;
     stopTimer();
   }
@@ -276,12 +287,12 @@ function deleteOptimizationData() {
 
 async function confirmDelete() {
   try {
-    await axios.delete('api/delete_optimization_data');
+    await axios.delete('/api/delete_optimization_data');
     optimizationInfo.value = null;
     showSimulationButton.value = false;
   } catch (err: any) {
     console.error(err);
-    error.value = "Не удалось удалить данные.";
+    error.value = "Could not clear the active result.";
   } finally {
     showDeleteConfirmation.value = false;
   }
@@ -291,13 +302,17 @@ function cancelDelete() {
   showDeleteConfirmation.value = false;
 }
 
-function saveFileToLocalStorage(file: File) {
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    localStorage.setItem("uploadedFile", e.target?.result as string);
-  };
-  localStorage.setItem("fileName", file.name);
-  reader.readAsDataURL(file);
+function saveFileToLocalStorage(file: File): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      localStorage.setItem("uploadedFile", reader.result as string);
+      localStorage.setItem("fileName", file.name);
+      resolve();
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read CSV file"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function blockInvalidKeys1(e: KeyboardEvent) {
@@ -408,7 +423,7 @@ function sanitizePositive2(e: Event) {
         </div>
       </div>
      <div class="form-group">
-        <label>Upload initial distribution (.csv) file</label>
+        <label>Upload initial EQMOM moments M0-M4 (.csv) file</label>
 
         <label
           for="file-upload-init"
@@ -479,7 +494,7 @@ function sanitizePositive2(e: Event) {
       </div>
       
       
-      <button type="submit" @click="handleSubmit" :disabled="isLoading || (!selectedFileExp && !selectedFileInit)">
+      <button type="submit" :disabled="isLoading || !selectedFileExp || !selectedFileInit">
         {{ isLoading ? 'Processing...' : 'Optimize' }}
       </button>
     </form>
@@ -506,10 +521,13 @@ function sanitizePositive2(e: Event) {
         <h2>Optimization result:</h2>
 
         <ul class="result-list">
-            <li><span>amax </span><span>{{ taskResult.amax.toFixed(4) }}</span></li>
-            <li><span>B </span><span>{{ taskResult.B.toFixed(4) }}</span></li>
-            <li><span>gama </span><span>{{ taskResult.gama.toFixed(4) }}</span></li>
+            <li><span>amax </span><span>{{ taskResult.amax.toFixed(2) }}</span></li>
+            <li><span>B </span><span>{{ taskResult.B.toFixed(1) }}</span></li>
+            <li><span>gamma (min⁻¹)</span><span>{{ taskResult.gama.toFixed(2) }}</span></li>
         </ul>
+        <div v-if="taskResult.diagnostics?.warnings?.length" class="result-warning">
+          <p v-for="warning in taskResult.diagnostics.warnings" :key="warning">{{ warning }}</p>
+        </div>
         <button @click="saveResults">
           {{ 'Save & simulate PBM' }}
         </button>
@@ -520,7 +538,7 @@ function sanitizePositive2(e: Event) {
   <table class="result-table">
     <tbody>
       <tr>
-        <td style="font-weight: bold;">Parametrs</td>
+        <td style="font-weight: bold;">Parameters</td>
         <td style="font-weight: bold;">Values</td>
         <td style="font-weight: bold;">Units</td>
       </tr>
@@ -531,13 +549,13 @@ function sanitizePositive2(e: Event) {
       </tr>
       <tr>
         <td>Fragmentation rate parameter (B)</td>
-        <td>{{ optimizationInfo.b.toFixed(2) }}</td>
+        <td>{{ optimizationInfo.b.toFixed(1) }}</td>
         <td>-</td>
       </tr>
       <tr>
         <td>Kinetic parameter for flocs re-structuring (&#947;)</td>
         <td>{{ optimizationInfo.gama.toFixed(2) }}</td>
-        <td>-</td>
+        <td>min⁻¹</td>
       </tr>
       <tr>
         <td>Optimization time</td>
@@ -550,7 +568,7 @@ function sanitizePositive2(e: Event) {
     <table class="result-table">
     <tbody>
       <tr>
-        <td style="font-weight: bold;">Parametrs</td>
+        <td style="font-weight: bold;">Parameters</td>
         <td style="font-weight: bold;">Values</td>
         <td style="font-weight: bold;">Units</td>
       </tr>
@@ -596,7 +614,7 @@ function sanitizePositive2(e: Event) {
       <div v-if="showDeleteConfirmation" class="modal-overlay">
       <div class="modal-content">
         <h3>Confirm clear</h3>
-        <p>Are you sure you want to delete the previous optimization data? This action cannot be undone.</p>
+        <p>Clear the active optimization result? Its immutable reproducibility report will remain in the local audit database.</p>
         <div class="modal-actions">
           <button @click="cancelDelete" class="modal-button cancel">Cancel</button>
           <button @click="confirmDelete" class="modal-button confirm">Clear</button>
@@ -626,6 +644,14 @@ body {
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+.result-warning {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  color: #7a4b00;
+  background: #fff7e6;
+  border: 1px solid #e7b85c;
+  border-radius: 6px;
 }
 h1, h2 {
   text-align: center;

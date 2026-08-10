@@ -1,0 +1,73 @@
+# Scientific Method
+
+## Scope
+
+The implemented model is a two-node log-normal EQMOM population balance model
+with aggregation, fragmentation, and a time-dependent fractal dimension. The
+scientific reference is the article listed in `CITATION.md`; the immediate
+implementation reference is the supplied `matlab_code/fit_EQMOM_general_PCC.m`.
+
+## Calibration Protocol
+
+The protocol identifier is `EQMOM-PCC-2STAGE-1.0`.
+
+1. Measurement time must start at zero. The initial point is excluded from
+   fitting because the model initial condition is supplied independently.
+2. `gamma` is estimated by bounded scalar minimization of DF residual SSE at
+   every subsequent measurement.
+3. The estimated `gamma` is fixed.
+4. `alpha_max` and `B` are estimated by DEA or GA over all subsequent `d43`
+   measurements, followed by deterministic bounded least-squares polishing.
+5. Selection is based on the lowest valid Stage 2 SSE. GOF is reported as a
+   diagnostic and is not used as a stopping target or selection criterion.
+
+The random seed and every optimizer setting are included in the per-run JSON
+report. No branch depends on C-PAM name or dosage.
+
+## Code Map
+
+| Scientific operation | Python implementation | MATLAB reference |
+| --- | --- | --- |
+| DF evolution and gamma fit | `backend/app/pbm_model/eqmom.py` | `simulateDF`, `DFObjective` |
+| Two-node log-normal inversion | `eqmom._two_node_lognormal` | `computeLogNormalNew.m` |
+| Secondary Gauss-Wigert quadrature | `eqmom._gauss_wigert` | `computeGaussWigert.m` |
+| Aggregation and breakup sources | `eqmom._moment_increment` | `momentIncrement` in `fit_EQMOM_general_PCC.m` |
+| Stage 2 objective | `optimization._stage_two_functions` | `trackedResidual` |
+| Fit diagnostics | `pbm_model/metrics.py` | `evaluateCandidate` |
+
+## Inputs And Units
+
+| Quantity | Application unit |
+| --- | --- |
+| Time | min in CSV; integrated in s |
+| `d43` | unit used by the experiment |
+| `G` | s^-1 |
+| Primary diameter `d0` | nm in UI; converted to m inside the kernel |
+| `gamma` | min^-1 |
+| Initial moments | source normalization; `M4/M3` must match the experimental `d43` unit |
+
+The current source data contain different apparent moment normalizations. The
+software therefore does not silently rescale moments. It records the modeled
+and experimental initial `d43` and raises a visible warning above 5% relative
+difference. It also warns when measured DF values exceed the supplied limiting
+`DF_max`. A run with either warning requires data-owner review before it can
+support a scientific claim.
+
+## Numerical Method
+
+The trajectory integrator uses the supplied MATLAB strategy: a one-second
+outer step with step halving whenever a candidate moment state is not positive
+and realizable. The minimum substep is `dt/1024` and at most 4096 attempts are
+allowed per outer step. Numerical equivalence must still be established with
+golden trajectories before publication-grade claims are made.
+
+## Deliberate Exclusions
+
+- Published Table 2 parameters never enter an optimization objective or start
+  point.
+- Experimental `G` is never replaced by another value.
+- No plateau-only or material-specific fitting window is used.
+- The application does not force parameters to agree with a paper.
+
+These constraints prevent circular validation. A discrepancy from the article
+is reported as a discrepancy to investigate, not corrected by hidden tuning.

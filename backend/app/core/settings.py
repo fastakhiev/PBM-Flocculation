@@ -1,18 +1,18 @@
 from functools import lru_cache
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 
 class Settings:
-    POSTGRES_USER: str = os.getenv("POSTGRES_USER")
-    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD")
-    POSTGRES_HOST: str = os.getenv("POSTGRES_HOST")
-    POSTGRES_PORT: int = os.getenv("POSTGRES_PORT")
-    POSTGRES_DB: str = os.getenv("POSTGRES_DB")
-    REDIS_HOST: str = os.getenv("REDIS_HOST")
-    REDIS_PORT: str = os.getenv("REDIS_PORT")
+    # SQLite file location. If relative, resolved against current working directory.
+    SQLITE_PATH: str = os.getenv("SQLITE_PATH", "pbm.sqlite3")
+    CORS_ORIGINS: tuple[str, ...] = tuple(
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ORIGINS",
+            "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8080,http://localhost:8080",
+        ).split(",")
+        if origin.strip()
+    )
 
 
 @lru_cache()

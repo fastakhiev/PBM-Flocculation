@@ -1,60 +1,16 @@
-from enum import Enum
-import platform
-import subprocess
-import time
-import typer as typer
+import argparse
 
-app = typer.Typer()
+import uvicorn
 
 
-class ProcessManager(str, Enum):
-    uvicorn = "uvicorn"
-    gunicorn = "gunicorn"
-
-
-@app.command()
-def dummy_command():
-    pass
-
-
-@app.command()
-def api(
-    manager: ProcessManager = ProcessManager.uvicorn,
-    port: int = 8000,
-    host: str = "0.0.0.0",
-    workers: int = 1,
-):
-    if platform.system() == "Windows" or manager == ProcessManager.uvicorn:
-        run_args = [
-            ProcessManager.uvicorn,
-            "app.main:app",
-            "--host",
-            f"{host}",
-            "--port",
-            f"{port}",
-            "--workers",
-            f"{workers}",
-        ]
-        proc = subprocess.Popen(run_args, stdout=None, stderr=subprocess.STDOUT)
-
-        while proc.poll() is None:
-            time.sleep(60)
-    else:
-        run_args = [
-            ProcessManager.gunicorn,
-            "app.main:app",
-            "--bind",
-            f"{host}:{port}",
-            "--workers",
-            f"{workers}",
-            "--worker-class",
-            "uvicorn.workers.UvicornWorker",
-        ]
-        proc = subprocess.Popen(run_args, stdout=None, stderr=subprocess.STDOUT)
-
-        while proc.poll() is None:
-            time.sleep(60)
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the PBM Flocculation API")
+    parser.add_argument("command", choices=["api"])
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    args = parser.parse_args()
+    uvicorn.run("app.main:app", host=args.host, port=args.port, workers=1)
 
 
 if __name__ == "__main__":
-    app()
+    main()
