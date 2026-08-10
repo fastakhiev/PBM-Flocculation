@@ -127,7 +127,8 @@ volume. PostgreSQL, Redis, and Celery are not required.
 
 ## Windows Release
 
-Run from PowerShell on Windows with Python 3.10.1 or newer and Node.js 20 installed:
+Run from PowerShell on Windows with 64-bit CPython 3.12 from python.org,
+Node.js 20, and npm installed:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1

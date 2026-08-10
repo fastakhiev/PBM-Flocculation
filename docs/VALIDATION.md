@@ -34,7 +34,7 @@ automatically satisfiable from this repository:
 
 ## Release Acceptance
 
-- [ ] Backend tests pass from a clean Python 3.10 environment.
+- [ ] Backend tests pass from the clean 64-bit CPython 3.12 release environment.
 - [ ] Frontend production build passes after `npm ci`.
 - [ ] Python and npm dependency audits report no known high-severity issue.
 - [ ] Release-specific CycloneDX SBOM files parse successfully.
