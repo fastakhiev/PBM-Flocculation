@@ -3,11 +3,9 @@
 # Build on Windows to produce a Windows .exe.
 
 from pathlib import Path
-import sys
 
 project_root = Path(SPECPATH).resolve().parents[0]
 frontend_dist = project_root / "pbm_model_interface" / "dist"
-splash_image = Path(SPECPATH).resolve() / "assets" / "splash.png"
 
 datas = []
 if frontend_dist.exists():
@@ -28,21 +26,9 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
-exe_inputs = [pyz, a.scripts]
-collect_inputs = []
-if sys.platform == "win32":
-    splash = Splash(
-        str(splash_image),
-        binaries=a.binaries,
-        datas=a.datas,
-        text_pos=None,
-        always_on_top=True,
-    )
-    exe_inputs.append(splash)
-    collect_inputs.append(splash.binaries)
-
 exe = EXE(
-    *exe_inputs,
+    pyz,
+    a.scripts,
     [],
     name="PBM-Flocculation",
     console=False,
@@ -52,7 +38,6 @@ exe = EXE(
 
 bundle = COLLECT(
     exe,
-    *collect_inputs,
     a.binaries,
     a.datas,
     a.zipfiles,
