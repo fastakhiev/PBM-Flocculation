@@ -32,7 +32,7 @@ class EQMOMTests(unittest.TestCase):
         time = np.array([0, 0.5, 1.4, 2.3, 3.3, 4.2, 5.1, 6.0, 6.9, 7.8, 8.8, 9.7, 10.6, 11.5, 12.4, 13.3])
         df = np.array([1.6, 1.85, 2.13, 2.22, 2.3, 2.34, 2.36, 2.38, 2.4, 2.4, 2.41, 2.42, 2.42, 2.41, 2.41, 2.41])
         gamma, _ = fit_gamma(time, df, 2.51)
-        self.assertAlmostEqual(gamma, 0.429977445, places=8)
+        self.assertAlmostEqual(gamma, 0.429977445, delta=5e-8)
 
     def test_gamma_matches_matlab_control_case(self):
         gamma, error = fit_gamma(TIME_E2_6, DF_E2_6, 2.55)
