@@ -12,11 +12,14 @@ $Backend = Join-Path $Root "backend"
 $Release = Join-Path $Root "release\PBM-Flocculation"
 $BuildVenv = Join-Path $Backend ".venv-release"
 
-$VersionOk = py -3 -c "import sys; print(int(sys.version_info >= (3, 10, 1)))"
+$VersionOk = py -3 -c "import platform, struct, sys; print(int((3, 10, 1) <= sys.version_info < (3, 15) and platform.python_implementation() == 'CPython' and struct.calcsize('P') == 8))"
 Assert-NativeSuccess "Python version check"
 if ($VersionOk -ne "1") {
-    throw "Python 3.10.1 or newer is required."
+    throw "64-bit CPython 3.10.1 through 3.14.x from python.org is required."
 }
+$PythonDescription = py -3 -c "import platform, sys; print(f'{platform.python_implementation()} {platform.python_version()} ({sys.executable})')"
+Assert-NativeSuccess "Python environment inspection"
+Write-Host "Build Python: $PythonDescription"
 
 if (Test-Path $Release) {
     Remove-Item $Release -Recurse -Force
@@ -55,12 +58,25 @@ Assert-NativeSuccess "Python SBOM generation"
 Assert-NativeSuccess "Backend tests"
 & "$BuildVenv\Scripts\pyinstaller.exe" --noconfirm --clean pbm_app.spec
 Assert-NativeSuccess "PyInstaller build"
+$BundledFfi = Get-ChildItem ".\dist\PBM-Flocculation" -File -Recurse |
+    Where-Object { $_.Name -match "^(lib)?ffi-.*\.dll$" }
+if (-not $BundledFfi) {
+    throw "PyInstaller output does not contain the libffi DLL required by _ctypes."
+}
+
+$OriginalPath = $env:PATH
 $env:PBM_SMOKE_TEST = "1"
 try {
+    $env:PATH = @(
+        (Join-Path $env:SystemRoot "System32"),
+        $env:SystemRoot,
+        (Join-Path $env:SystemRoot "System32\Wbem")
+    ) -join ";"
     & ".\dist\PBM-Flocculation\PBM-Flocculation.exe"
     Assert-NativeSuccess "Packaged application smoke test"
 }
 finally {
+    $env:PATH = $OriginalPath
     Remove-Item Env:PBM_SMOKE_TEST -ErrorAction SilentlyContinue
 }
 Pop-Location

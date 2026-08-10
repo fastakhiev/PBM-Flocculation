@@ -3,6 +3,7 @@
 # Build on Windows to produce a Windows .exe.
 
 from pathlib import Path
+import sys
 
 project_root = Path(SPECPATH).resolve().parents[0]
 frontend_dist = project_root / "pbm_model_interface" / "dist"
@@ -11,10 +12,30 @@ datas = []
 if frontend_dist.exists():
     datas.append((str(frontend_dist), "pbm_model_interface/dist"))
 
+runtime_binaries = []
+if sys.platform == "win32":
+    python_roots = {
+        Path(sys.base_prefix).resolve(),
+        Path(sys.prefix).resolve(),
+        Path(sys.executable).resolve().parent,
+    }
+    runtime_dlls = set()
+    for root in python_roots:
+        for directory in (root, root / "DLLs", root / "Library" / "bin"):
+            for pattern in ("libffi*.dll", "ffi-*.dll"):
+                runtime_dlls.update(directory.glob(pattern))
+
+    if not runtime_dlls:
+        raise SystemExit(
+            "The build Python installation does not contain the libffi DLL required by _ctypes. "
+            "Install 64-bit CPython from python.org and run the build again."
+        )
+    runtime_binaries.extend((str(dll), ".") for dll in sorted(runtime_dlls))
+
 a = Analysis(
     ["standalone.py"],
     pathex=[str(Path(SPECPATH).resolve())],
-    binaries=[],
+    binaries=runtime_binaries,
     datas=datas,
     hiddenimports=[],
     hookspath=[],
