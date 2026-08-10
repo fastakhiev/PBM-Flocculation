@@ -13,14 +13,13 @@ $Release = Join-Path $Root "release\PBM-Flocculation"
 $BuildVenv = Join-Path $Backend ".venv-release"
 $PythonSelector = "-3.12"
 
-$VersionOk = py $PythonSelector -c "import platform, struct, sys; print(int(sys.version_info[:2] == (3, 12) and platform.python_implementation() == 'CPython' and struct.calcsize('P') == 8))"
-Assert-NativeSuccess "Python version check"
-if ($VersionOk -ne "1") {
-    throw "64-bit CPython 3.12 from python.org is required for a reproducible Windows release."
-}
-$PythonDescription = py $PythonSelector -c "import platform, sys; print(f'{platform.python_implementation()} {platform.python_version()} ({sys.executable})')"
+$PythonInfoJson = py $PythonSelector -c "import json, os, platform, struct, sys; print(json.dumps({'compatible': sys.version_info[:2] == (3, 12) and platform.python_implementation() == 'CPython' and struct.calcsize('P') == 8, 'version': platform.python_version(), 'executable': sys.executable, 'base_prefix': sys.base_prefix, 'is_conda': os.path.isdir(os.path.join(sys.base_prefix, 'conda-meta'))}))"
 Assert-NativeSuccess "Python environment inspection"
-Write-Host "Build Python: $PythonDescription"
+$PythonInfo = $PythonInfoJson | ConvertFrom-Json
+if (-not $PythonInfo.compatible) {
+    throw "64-bit CPython 3.12 is required for a reproducible Windows release."
+}
+Write-Host "Source Python: $($PythonInfo.version) ($($PythonInfo.executable))"
 
 if (Test-Path $Release) {
     Remove-Item $Release -Recurse -Force
@@ -47,27 +46,61 @@ Push-Location $Backend
 if (Test-Path $BuildVenv) {
     Remove-Item $BuildVenv -Recurse -Force
 }
-py $PythonSelector -m venv $BuildVenv
-Assert-NativeSuccess "Python virtual environment creation"
-& "$BuildVenv\Scripts\python.exe" -m pip install --requirement requirements-audit.txt
+if ($PythonInfo.is_conda) {
+    $CondaExe = Join-Path $PythonInfo.base_prefix "Scripts\conda.exe"
+    if (-not (Test-Path $CondaExe)) {
+        $CondaCommand = Get-Command conda.exe -ErrorAction SilentlyContinue
+        if (-not $CondaCommand) {
+            throw "Anaconda Python was detected, but conda.exe could not be found."
+        }
+        $CondaExe = $CondaCommand.Source
+    }
+    & $CondaExe create --prefix $BuildVenv --yes --quiet python=3.12 pip
+    Assert-NativeSuccess "Conda release environment creation"
+    $BuildPython = Join-Path $BuildVenv "python.exe"
+    $env:CONDA_PREFIX = $BuildVenv
+    $env:PATH = @(
+        $BuildVenv,
+        (Join-Path $BuildVenv "Scripts"),
+        (Join-Path $BuildVenv "Library\bin"),
+        $env:PATH
+    ) -join ";"
+    Write-Host "Release environment: isolated Conda environment"
+}
+else {
+    & $PythonInfo.executable -m venv $BuildVenv
+    Assert-NativeSuccess "Python virtual environment creation"
+    $BuildPython = Join-Path $BuildVenv "Scripts\python.exe"
+    Write-Host "Release environment: standard venv"
+}
+
+& $BuildPython -m pip install --requirement requirements-audit.txt
 Assert-NativeSuccess "Python dependency installation"
-& "$BuildVenv\Scripts\pip-audit.exe" --requirement requirements-build.txt
+& $BuildPython -m pip_audit --requirement requirements-build.txt
 Assert-NativeSuccess "Python dependency audit"
-& "$BuildVenv\Scripts\pip-audit.exe" --requirement requirements.txt --format cyclonedx-json --output (Join-Path $Release "sbom-python.cdx.json")
+& $BuildPython -m pip_audit --requirement requirements.txt --format cyclonedx-json --output (Join-Path $Release "sbom-python.cdx.json")
 Assert-NativeSuccess "Python SBOM generation"
-& "$BuildVenv\Scripts\python.exe" -m unittest discover -s tests -v
+& $BuildPython -m unittest discover -s tests -v
 Assert-NativeSuccess "Backend tests"
-& "$BuildVenv\Scripts\pyinstaller.exe" --noconfirm --clean pbm_app.spec
+& $BuildPython -m PyInstaller --noconfirm --clean pbm_app.spec
 Assert-NativeSuccess "PyInstaller build"
 $BundleRoot = (Resolve-Path ".\dist\PBM-Flocculation").Path
-& "$BuildVenv\Scripts\python.exe" ".\build_support\collect_windows_ctypes_runtime.py" `
+& $BuildPython ".\build_support\collect_windows_ctypes_runtime.py" `
     --target $BundleRoot `
     --report (Join-Path $Release "ctypes-runtime-manifest.json")
 Assert-NativeSuccess "_ctypes runtime dependency collection"
 
 $OriginalPath = $env:PATH
+$OriginalCondaPrefix = $env:CONDA_PREFIX
+$OriginalCondaDefaultEnv = $env:CONDA_DEFAULT_ENV
+$OriginalPythonHome = $env:PYTHONHOME
+$OriginalPythonPath = $env:PYTHONPATH
 $env:PBM_SMOKE_TEST = "1"
 try {
+    Remove-Item Env:CONDA_PREFIX -ErrorAction SilentlyContinue
+    Remove-Item Env:CONDA_DEFAULT_ENV -ErrorAction SilentlyContinue
+    Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue
+    Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
     $env:PATH = @(
         (Join-Path $env:SystemRoot "System32"),
         $env:SystemRoot,
@@ -83,6 +116,10 @@ try {
 }
 finally {
     $env:PATH = $OriginalPath
+    $env:CONDA_PREFIX = $OriginalCondaPrefix
+    $env:CONDA_DEFAULT_ENV = $OriginalCondaDefaultEnv
+    $env:PYTHONHOME = $OriginalPythonHome
+    $env:PYTHONPATH = $OriginalPythonPath
     Remove-Item Env:PBM_SMOKE_TEST -ErrorAction SilentlyContinue
 }
 Pop-Location

@@ -58,6 +58,11 @@ def _resolve_library(name: str, directories: list[Path]) -> Path | None:
 
 
 def _is_windows_system_library(path: Path) -> bool:
+    library_name = path.name.casefold()
+    if library_name.startswith(("api-ms-win-", "ext-ms-")):
+        return True
+    if library_name in {"msvcrt.dll", "ucrtbase.dll"}:
+        return True
     portable_runtime_prefixes = (
         "concrt",
         "ffi-",
@@ -66,7 +71,7 @@ def _is_windows_system_library(path: Path) -> bool:
         "python3",
         "vcruntime",
     )
-    if path.name.casefold().startswith(portable_runtime_prefixes):
+    if library_name.startswith(portable_runtime_prefixes):
         return False
     system_root = str(Path(os.environ.get("SystemRoot", r"C:\Windows")).resolve()).casefold()
     candidate = str(path.resolve()).casefold()

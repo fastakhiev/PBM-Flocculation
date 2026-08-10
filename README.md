@@ -127,8 +127,8 @@ volume. PostgreSQL, Redis, and Celery are not required.
 
 ## Windows Release
 
-Run from PowerShell on Windows with 64-bit CPython 3.12 from python.org,
-Node.js 20, and npm installed:
+Run from PowerShell on Windows with 64-bit CPython 3.12 (python.org or
+Anaconda), Node.js 20, and npm installed:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
@@ -140,6 +140,9 @@ startup. Launch `PBM-Flocculation.exe` and distribute the complete folder: the
 adjacent `_internal` directory is required. The folder also contains the legal
 notices, scientific method, validation record, citation, CycloneDX software
 bills of materials, the `_ctypes` runtime DLL manifest, and recursive checksums.
+When the selected Python belongs to Anaconda, the script creates and builds
+from a clean Conda environment instead of layering a standard `venv` over the
+Anaconda runtime.
 
 ## Submission Gate
 
