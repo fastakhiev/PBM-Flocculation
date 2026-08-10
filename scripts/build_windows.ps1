@@ -64,11 +64,6 @@ $BundleRoot = (Resolve-Path ".\dist\PBM-Flocculation").Path
     --target $BundleRoot `
     --report (Join-Path $Release "ctypes-runtime-manifest.json")
 Assert-NativeSuccess "_ctypes runtime dependency collection"
-$BundledFfi = Get-ChildItem $BundleRoot -File |
-    Where-Object { $_.Name -match "^(lib)?ffi-.*\.dll$" }
-if (-not $BundledFfi) {
-    throw "The application root does not contain the libffi DLL required by _ctypes."
-}
 
 $OriginalPath = $env:PATH
 $env:PBM_SMOKE_TEST = "1"

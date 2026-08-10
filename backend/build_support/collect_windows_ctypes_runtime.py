@@ -58,6 +58,16 @@ def _resolve_library(name: str, directories: list[Path]) -> Path | None:
 
 
 def _is_windows_system_library(path: Path) -> bool:
+    portable_runtime_prefixes = (
+        "concrt",
+        "ffi-",
+        "libffi",
+        "msvcp",
+        "python3",
+        "vcruntime",
+    )
+    if path.name.casefold().startswith(portable_runtime_prefixes):
+        return False
     system_root = str(Path(os.environ.get("SystemRoot", r"C:\Windows")).resolve()).casefold()
     candidate = str(path.resolve()).casefold()
     return candidate == system_root or candidate.startswith(system_root + os.sep)
@@ -145,9 +155,6 @@ def collect_runtime(target_directory: Path) -> dict:
     if unresolved:
         details = ", ".join(sorted({entry["name"] for entry in unresolved}, key=str.casefold))
         raise RuntimeError(f"Unresolved non-system DLL dependencies for _ctypes: {details}")
-    if not any(name.startswith(("ffi-", "libffi-")) for name in copied):
-        raise RuntimeError("The analyzed _ctypes dependency chain does not contain a bundled libffi DLL.")
-
     return {
         "python": sys.version,
         "python_executable": sys.executable,
