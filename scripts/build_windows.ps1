@@ -60,16 +60,14 @@ Assert-NativeSuccess "Backend tests"
 & "$BuildVenv\Scripts\pyinstaller.exe" --noconfirm --clean pbm_app.spec
 Assert-NativeSuccess "PyInstaller build"
 $BundleRoot = (Resolve-Path ".\dist\PBM-Flocculation").Path
-$BundledFfi = Get-ChildItem $BundleRoot -File -Recurse |
+& "$BuildVenv\Scripts\python.exe" ".\build_support\collect_windows_ctypes_runtime.py" `
+    --target $BundleRoot `
+    --report (Join-Path $Release "ctypes-runtime-manifest.json")
+Assert-NativeSuccess "_ctypes runtime dependency collection"
+$BundledFfi = Get-ChildItem $BundleRoot -File |
     Where-Object { $_.Name -match "^(lib)?ffi-.*\.dll$" }
 if (-not $BundledFfi) {
-    throw "PyInstaller output does not contain the libffi DLL required by _ctypes."
-}
-foreach ($Dll in $BundledFfi) {
-    $Destination = Join-Path $BundleRoot $Dll.Name
-    if ($Dll.FullName -ne $Destination) {
-        Copy-Item $Dll.FullName $Destination -Force
-    }
+    throw "The application root does not contain the libffi DLL required by _ctypes."
 }
 
 $OriginalPath = $env:PATH

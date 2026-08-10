@@ -139,7 +139,7 @@ one-directory package to avoid unpacking the scientific Python stack on every
 startup. Launch `PBM-Flocculation.exe` and distribute the complete folder: the
 adjacent `_internal` directory is required. The folder also contains the legal
 notices, scientific method, validation record, citation, CycloneDX software
-bills of materials, and recursive checksums.
+bills of materials, the `_ctypes` runtime DLL manifest, and recursive checksums.
 
 ## Submission Gate
 
