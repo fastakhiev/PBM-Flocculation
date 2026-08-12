@@ -211,20 +211,6 @@ async function backToOptimization() {
   
 }
 
-async function downloadOptimizationReport() {
-  try {
-    const response = await axios.get('/api/optimization_report', { responseType: 'blob' });
-    const url = URL.createObjectURL(response.data);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `optimization-${optimizationInfo.value.audit_run_id || 'report'}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  } catch (err: any) {
-    error.value = err.response?.data?.detail || 'Could not download the optimization report.';
-  }
-}
-
 async function handleStopSimulation() {
   const taskId = localStorage.getItem('simulationTaskId');
   if (!taskId) return;
@@ -436,9 +422,6 @@ onUnmounted(() => {
                     </tr>
                   </tbody>
                 </table>
-                <button type="button" class="report-button" @click="downloadOptimizationReport">
-                  Download reproducibility report
-                </button>
           </div>
         </div>
       </div>
@@ -562,16 +545,6 @@ button:disabled { background-color: #a5d6c1; cursor: not-allowed; }
 .back-button:hover:not(:disabled) {
   background-color: #5a6268;
 }
-.report-button {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #56606b;
-  border-radius: 6px;
-  color: #2f3740;
-  background: #fff;
-  cursor: pointer;
-}
-
 .result-table {
   width: 100%;
   border-collapse: collapse;

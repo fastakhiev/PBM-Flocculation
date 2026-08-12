@@ -525,9 +525,6 @@ function sanitizePositive2(e: Event) {
             <li><span>B </span><span>{{ taskResult.B.toFixed(1) }}</span></li>
             <li><span>gamma (min⁻¹)</span><span>{{ taskResult.gama.toFixed(2) }}</span></li>
         </ul>
-        <div v-if="taskResult.diagnostics?.warnings?.length" class="result-warning">
-          <p v-for="warning in taskResult.diagnostics.warnings" :key="warning">{{ warning }}</p>
-        </div>
         <button @click="saveResults">
           {{ 'Save & simulate PBM' }}
         </button>
@@ -644,14 +641,6 @@ body {
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-}
-.result-warning {
-  margin: 1rem 0;
-  padding: 0.75rem 1rem;
-  color: #7a4b00;
-  background: #fff7e6;
-  border: 1px solid #e7b85c;
-  border-radius: 6px;
 }
 h1, h2 {
   text-align: center;
