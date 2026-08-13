@@ -25,6 +25,11 @@ each file:
 assets. They must not be included in a release unless redistribution rights are
 confirmed.
 
+For BHMW 14 mg/g, `PCC_test.docx` contains `M1 = 0.679`. On 2026-08-12 the
+data owner directly corrected the value used for the MATLAB result to
+`M1 = 0.57`. The local `PCC_test_BHMW_14mg_moments.csv` and MATLAB runner use
+the corrected value; both source records must be retained with the project.
+
 Every optimization report records the SHA-256 hashes and original filenames of
 the two uploaded CSV files. A report is only reproducible when those exact
 inputs are retained under the grant's data-management policy.

@@ -5,6 +5,7 @@ import numpy as np
 from app.pbm_model.eqmom import (
     EQMOMCancelled,
     EQMOMConfig,
+    _two_node_lognormal,
     fit_gamma,
     moments_from_distribution,
     simulate_eqmom,
@@ -57,6 +58,15 @@ class EQMOMTests(unittest.TestCase):
         expected = np.array([np.mean(diameters**order) for order in range(5)])
         np.testing.assert_allclose(moments, expected)
 
+    def test_lognormal_inversion_uses_first_matlab_canonical_boundary(self):
+        weights, nodes, sigma = _two_node_lognormal(
+            np.array([1.0, 0.57, 0.82, 1.8, 7.0])
+        )
+        self.assertAlmostEqual(sigma**2, 0.42256962419625416, places=12)
+        self.assertAlmostEqual(nodes[0], 2.77555756e-16, delta=1e-24)
+        self.assertTrue(np.all(weights >= 0.0))
+        self.assertTrue(np.all(nodes > 0.0))
+
     def test_e2_6_table_parameters_produce_finite_reference_trajectory(self):
         gamma, _ = fit_gamma(TIME_E2_6, DF_E2_6, 2.55)
         config = EQMOMConfig(
@@ -70,7 +80,7 @@ class EQMOMTests(unittest.TestCase):
         d43, predicted_df = simulate_eqmom(0.80, 49.2, gamma, config)
         self.assertTrue(np.all(np.isfinite(d43)))
         self.assertAlmostEqual(d43[0], 2.21, places=2)
-        self.assertAlmostEqual(d43[-1], 45.0216, places=3)
+        self.assertAlmostEqual(d43[-1], 44.9401, places=3)
         self.assertAlmostEqual(predicted_df[-1], 2.5481, places=3)
 
     def test_simulation_honors_cancellation(self):

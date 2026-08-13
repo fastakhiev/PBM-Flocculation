@@ -19,10 +19,10 @@ class ProtocolTests(unittest.TestCase):
             data,
             700,
             100,
-            np.array([1, 0.679, 0.82, 1.8, 7]),
+            np.array([1, 0.57, 0.82, 1.8, 7]),
             2.19,
         )
-        self.assertEqual(PROTOCOL_VERSION, "EQMOM-PCC-2STAGE-1.0")
+        self.assertEqual(PROTOCOL_VERSION, "EQMOM-PCC-2STAGE-1.1")
         self.assertEqual(model.shear_rate, 700)
         np.testing.assert_array_equal(fit_indices, [1, 2, 3])
 

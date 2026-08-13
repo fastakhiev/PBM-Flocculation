@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 import numpy as np
-from scipy.optimize import brentq, minimize_scalar
+from scipy.optimize import minimize_scalar
 
 
 class EQMOMError(RuntimeError):
@@ -29,7 +29,7 @@ class EQMOMConfig:
     boltzmann_constant: float = 1.380622e-23
     dynamic_viscosity: float = 1e-3
     collision_x: float = 0.1
-    collision_y: float = 0.1
+    collision_y: float = 0.2
     secondary_quadrature_order: int = 5
     d43_scale: float = 1.0
     minimum_substep_seconds: float | None = None
@@ -142,15 +142,259 @@ def fit_gamma(
     return float(result.x), float(result.fun)
 
 
-def _hankel_determinant(reduced: np.ndarray) -> float:
-    matrix = np.array(
-        [
-            [reduced[0], reduced[1], reduced[2]],
-            [reduced[1], reduced[2], reduced[3]],
-            [reduced[2], reduced[3], reduced[4]],
-        ]
+def _chebyshev_coefficients(reduced: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    a0 = reduced[1]
+    s22 = reduced[2] - a0 * reduced[1]
+    b1 = s22
+    z1 = a0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        z2 = b1 / z1
+        a1 = (reduced[3] - a0 * reduced[2]) / s22 - reduced[1]
+        z3 = a1 - z2
+        s33 = (
+            reduced[4]
+            - a0 * reduced[3]
+            - a1 * (reduced[3] - a0 * reduced[2])
+            - b1 * reduced[2]
+        )
+        b2 = s33 / s22
+        z4 = b2 / z3
+    return (
+        np.array([z1, z2, z3, z4]),
+        np.array([a0, a1]),
+        np.array([b1, b2]),
     )
-    return float(np.linalg.det(matrix))
+
+
+def _matlab_lognormal_boundary(
+    normalized: np.ndarray,
+    variance_limit: float,
+) -> tuple[float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Port the four-slot Ridder search from computeLogNormalNew.m."""
+    relative_tolerance = 1e-10
+    maximum_evaluations = 100
+    orders = np.arange(5, dtype=float)
+    coordinates = np.zeros((4, 4))
+    recurrence_a = np.zeros((2, 4))
+    recurrence_b = np.zeros((2, 4))
+    sigma_squared = np.array([0.0, np.nan, np.nan, variance_limit])
+
+    def evaluate(slot: int) -> None:
+        reduced = normalized * np.exp(-0.5 * orders**2 * sigma_squared[slot])
+        (
+            coordinates[:, slot],
+            recurrence_a[:, slot],
+            recurrence_b[:, slot],
+        ) = _chebyshev_coefficients(reduced)
+
+    evaluate(0)
+    evaluations = 1
+    raw_coordinates = coordinates[:, 0]
+    if np.any(~np.isfinite(raw_coordinates)) or np.any(raw_coordinates < -relative_tolerance):
+        raise EQMOMError("The moment vector is not realizable.")
+
+    degenerate = np.flatnonzero(raw_coordinates < relative_tolerance)
+    if degenerate.size:
+        raw_coordinates[degenerate[0]] = 0.0
+        return (
+            0.0,
+            recurrence_a[:, 0],
+            recurrence_b[:, 0],
+            raw_coordinates.copy(),
+            raw_coordinates * relative_tolerance,
+        )
+
+    evaluate(3)
+    evaluations += 1
+    reference_coordinates = raw_coordinates * relative_tolerance
+    sigma_tolerance = variance_limit * relative_tolerance
+
+    # MATLAB pointer vector p = [1 2 3 4 1 4 0], converted to zero-based slots.
+    pointers = [0, 1, 2, 3, 0, 3, -1]
+    status = 0
+
+    def ridder_step(coordinate_index: int, *, final_coordinate: bool) -> None:
+        nonlocal evaluations, status
+        pointers[4] = 0
+        pointers[5] = 3
+
+        middle_slot = pointers[1]
+        sigma_squared[middle_slot] = 0.5 * (
+            sigma_squared[pointers[0]] + sigma_squared[pointers[3]]
+        )
+        evaluate(middle_slot)
+        evaluations += 1
+
+        middle_positive = coordinates[coordinate_index, middle_slot] > 0.0
+        later_negative = (
+            not final_coordinate
+            and middle_positive
+            and np.any(coordinates[coordinate_index + 1 :, middle_slot] < 0.0)
+        )
+        if later_negative:
+            pointers[3], pointers[1] = pointers[1], pointers[3]
+            return
+        if middle_positive:
+            pointers[4] = 1
+        else:
+            pointers[5] = 1
+
+        left_value = coordinates[coordinate_index, pointers[0]]
+        middle_value = coordinates[coordinate_index, middle_slot]
+        right_value = coordinates[coordinate_index, pointers[3]]
+        radicand = middle_value**2 - left_value * right_value
+        if not np.isfinite(radicand) or radicand <= 0.0:
+            raise EQMOMError("The MATLAB EQMOM width search became invalid.")
+
+        ridder_slot = pointers[2]
+        sigma_squared[ridder_slot] = sigma_squared[middle_slot] + (
+            (sigma_squared[middle_slot] - sigma_squared[pointers[0]])
+            * middle_value
+            / np.sqrt(radicand)
+        )
+        evaluate(ridder_slot)
+        evaluations += 1
+
+        ridder_positive = coordinates[coordinate_index, ridder_slot] > 0.0
+        later_negative = (
+            not final_coordinate
+            and ridder_positive
+            and np.any(coordinates[coordinate_index + 1 :, ridder_slot] < 0.0)
+        )
+        if (
+            not later_negative
+            and ridder_positive
+            and sigma_squared[ridder_slot] > sigma_squared[pointers[pointers[4]]]
+        ):
+            pointers[4] = 2
+        if (
+            not ridder_positive
+            and sigma_squared[ridder_slot] < sigma_squared[pointers[pointers[5]]]
+        ):
+            pointers[5] = 2
+
+        candidate_left = pointers[pointers[4]]
+        pointers[0], pointers[pointers[4]] = candidate_left, pointers[0]
+        candidate_right = pointers[pointers[5]]
+        pointers[3], pointers[pointers[5]] = candidate_right, pointers[3]
+
+        if final_coordinate and (
+            coordinates[coordinate_index, pointers[0]]
+            < reference_coordinates[coordinate_index]
+        ):
+            coordinates[coordinate_index, pointers[0]] = 0.0
+            status = 1
+        elif sigma_squared[pointers[3]] - sigma_squared[pointers[0]] < sigma_tolerance:
+            status = 1
+        elif evaluations > maximum_evaluations:
+            status = 5
+
+    coordinate_index = 0
+    while status == 0 and coordinate_index < 3:
+        if coordinates[coordinate_index, pointers[3]] > 0.0:
+            coordinate_index += 1
+            continue
+        ridder_step(coordinate_index, final_coordinate=False)
+
+    while status == 0:
+        ridder_step(3, final_coordinate=True)
+
+    if status != 1:
+        raise EQMOMError("The MATLAB EQMOM width search did not converge.")
+
+    left_slot = pointers[0]
+    return (
+        float(sigma_squared[left_slot]),
+        recurrence_a[:, left_slot].copy(),
+        recurrence_b[:, left_slot].copy(),
+        coordinates[:, left_slot].copy(),
+        reference_coordinates,
+    )
+
+
+def _matlab_eigen_jacobi(
+    diagonal: np.ndarray,
+    squared_off_diagonal: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Port eigenJacobi.m, including its rounding near a zero eigenvalue."""
+    diagonal = np.asarray(diagonal, dtype=float)
+    order = diagonal.size
+    jacobi = np.diag(diagonal)
+    for index in range(1, order):
+        value = np.sqrt(squared_off_diagonal[index - 1])
+        jacobi[index - 1, index] = value
+        jacobi[index, index - 1] = value
+
+    vectors = np.eye(order)
+    eigenvalues = diagonal.copy()
+    accumulated = diagonal.copy()
+    corrections = np.zeros(order)
+
+    for iteration in range(1, 101):
+        threshold = sum(
+            abs(jacobi[row, column])
+            for row in range(order - 1)
+            for column in range(row + 1, order)
+        ) / (4.0 * order)
+        if threshold == 0.0:
+            break
+
+        for row in range(order):
+            for column in range(row + 1, order):
+                gap = 10.0 * abs(jacobi[row, column])
+                matlab_epsilon = np.spacing(min(abs(eigenvalues[row]), abs(eigenvalues[column])))
+                if iteration > 4 and gap < matlab_epsilon:
+                    jacobi[row, column] = 0.0
+                    continue
+                if threshold > abs(jacobi[row, column]):
+                    continue
+
+                difference = eigenvalues[column] - eigenvalues[row]
+                if gap < np.spacing(abs(difference)):
+                    tangent = jacobi[row, column] / difference
+                else:
+                    theta = 0.5 * difference / jacobi[row, column]
+                    tangent = 1.0 / (abs(theta) + np.hypot(1.0, theta))
+                    if theta < 0.0:
+                        tangent = -tangent
+
+                cosine = 1.0 / np.hypot(1.0, tangent)
+                sine = tangent * cosine
+                tau = sine / (1.0 + cosine)
+                shift = tangent * jacobi[row, column]
+                corrections[row] -= shift
+                corrections[column] += shift
+                eigenvalues[row] -= shift
+                eigenvalues[column] += shift
+                jacobi[row, column] = 0.0
+
+                for index in range(row):
+                    first = jacobi[index, row]
+                    second = jacobi[index, column]
+                    jacobi[index, row] = first - sine * (second + first * tau)
+                    jacobi[index, column] = second + sine * (first - second * tau)
+                for index in range(row + 1, column):
+                    first = jacobi[row, index]
+                    second = jacobi[index, column]
+                    jacobi[row, index] = first - sine * (second + first * tau)
+                    jacobi[index, column] = second + sine * (first - second * tau)
+                for index in range(column + 1, order):
+                    first = jacobi[row, index]
+                    second = jacobi[column, index]
+                    jacobi[row, index] = first - sine * (second + first * tau)
+                    jacobi[column, index] = second + sine * (first - second * tau)
+                for index in range(order):
+                    first = vectors[index, row]
+                    second = vectors[index, column]
+                    vectors[index, row] = first - sine * (second + first * tau)
+                    vectors[index, column] = second + sine * (first - second * tau)
+
+        accumulated += corrections
+        eigenvalues = accumulated.copy()
+        corrections.fill(0.0)
+
+    indices = np.argsort(eigenvalues)
+    return vectors[0, indices] ** 2, eigenvalues[indices]
 
 
 def _two_node_lognormal(moments: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
@@ -158,59 +402,42 @@ def _two_node_lognormal(moments: np.ndarray) -> tuple[np.ndarray, np.ndarray, fl
     if moments.shape != (5,) or np.any(moments <= 0) or np.any(~np.isfinite(moments)):
         raise EQMOMError("The moment vector is not realizable.")
 
-    characteristic = moments[1] / moments[0]
-    normalized = moments / (moments[0] * characteristic ** np.arange(5))
+    normalized = moments / moments[0]
     variance_limit = np.log(normalized[2] / normalized[1] ** 2)
     if not np.isfinite(variance_limit) or variance_limit <= 1e-14:
         raise EQMOMError("The moment vector is degenerate.")
 
-    orders = np.arange(5, dtype=float)
+    (
+        sigma_squared,
+        recurrence_a,
+        recurrence_b,
+        boundary_coordinates,
+        reference_coordinates,
+    ) = _matlab_lognormal_boundary(normalized, variance_limit)
 
-    def determinant(sigma_squared: float) -> float:
-        reduced = normalized * np.exp(-0.5 * orders**2 * sigma_squared)
-        return _hankel_determinant(reduced)
+    coordinate_number = 4
+    for index in range(4):
+        if boundary_coordinates[index] <= reference_coordinates[index]:
+            coordinate_number = index + 1
+            break
+    node_count = (coordinate_number + coordinate_number % 2) // 2
 
-    left = 0.0
-    right = variance_limit * (1.0 - 1e-12)
-    f_left = determinant(left)
-    f_right = determinant(right)
-    scale = max(abs(f_left), abs(f_right), 1.0)
-
-    if abs(f_left) <= 1e-12 * scale:
-        sigma_squared = 0.0
-    elif f_left * f_right < 0:
-        sigma_squared = brentq(determinant, left, right, xtol=1e-12, rtol=1e-12, maxiter=100)
-    else:
-        grid = np.linspace(left, right, 65)
-        values = np.array([determinant(value) for value in grid])
-        crossings = np.flatnonzero(values[:-1] * values[1:] <= 0)
-        if crossings.size == 0:
-            raise EQMOMError("Could not determine the log-normal EQMOM width.")
-        index = int(crossings[-1])
-        sigma_squared = brentq(
-            determinant, grid[index], grid[index + 1], xtol=1e-12, rtol=1e-12, maxiter=100
-        )
-
-    reduced = moments * np.exp(-0.5 * orders**2 * sigma_squared)
-    a0 = reduced[1] / reduced[0]
-    norm1 = reduced[2] - 2.0 * a0 * reduced[1] + a0**2 * reduced[0]
-    if norm1 <= 0 or not np.isfinite(norm1):
+    if recurrence_b[0] <= 0 or not np.isfinite(recurrence_b[0]):
         raise EQMOMError("The reduced moment vector is not realizable.")
-    b1 = norm1 / reduced[0]
-    a1 = (
-        reduced[3] - 2.0 * a0 * reduced[2] + a0**2 * reduced[1]
-    ) / norm1
-    jacobi = np.array([[a0, np.sqrt(b1)], [np.sqrt(b1), a1]])
-    nodes, vectors = np.linalg.eigh(jacobi)
-    weights = reduced[0] * vectors[0, :] ** 2
-    if np.any(nodes <= 0) or np.any(weights < 0):
-        # Rounded experimental moments can land immediately on the one-node
-        # realizability boundary. MATLAB's solver pads that reconstruction to
-        # two nodes with a zero second weight.
-        sigma_squared = variance_limit
-        reduced = moments * np.exp(-0.5 * orders**2 * sigma_squared)
-        nodes = np.array([reduced[1] / reduced[0], 0.5 * reduced[1] / reduced[0]])
-        weights = np.array([reduced[0], 0.0])
+
+    if node_count == 2:
+        normalized_weights, nodes = _matlab_eigen_jacobi(
+            recurrence_a,
+            recurrence_b[:1],
+        )
+        weights = moments[0] * normalized_weights
+    else:
+        nodes = np.array([recurrence_a[0], 0.5])
+        weights = np.array([moments[0], 0.0])
+
+    active = weights > 0.0
+    if np.any(nodes[active] <= 0) or np.any(weights < 0) or np.any(~np.isfinite(nodes)):
+        raise EQMOMError("The MATLAB EQMOM quadrature is invalid.")
     return weights, nodes, float(np.sqrt(max(sigma_squared, 0.0)))
 
 
@@ -261,7 +488,7 @@ def _moment_derivative(moments: np.ndarray, df: float, alpha_max: float, binding
     ratio = np.minimum(r1, r2) / np.maximum(r1, r2)
     collision_efficiency = alpha_max * np.exp(-config.collision_x * (1.0 - ratio**df) ** 2)
 
-    log_penalty = df * 2.0 * config.collision_y * np.log(
+    log_penalty = df * config.collision_y * np.log(
         (r1 * r2) / config.primary_diameter_m**2
     )
     inverse_size_penalty = np.exp(np.clip(-log_penalty, -745.0, 700.0))

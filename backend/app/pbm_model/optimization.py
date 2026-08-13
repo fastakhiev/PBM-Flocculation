@@ -23,7 +23,7 @@ POLISH_START_FRACTIONS = ((0.25, 0.10), (0.50, 0.50), (0.75, 0.90))
 
 ALPHA_BOUNDS = (1e-6, 1.0)
 B_BOUNDS = (1e-8, 500.0)
-PROTOCOL_VERSION = "EQMOM-PCC-2STAGE-1.0"
+PROTOCOL_VERSION = "EQMOM-PCC-2STAGE-1.1"
 
 
 class OptimizationCancelled(RuntimeError):

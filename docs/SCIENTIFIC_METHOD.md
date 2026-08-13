@@ -9,7 +9,7 @@ implementation reference is the supplied `matlab_code/fit_EQMOM_general_PCC.m`.
 
 ## Calibration Protocol
 
-The protocol identifier is `EQMOM-PCC-2STAGE-1.0`.
+The protocol identifier is `EQMOM-PCC-2STAGE-1.1`.
 
 1. Measurement time must start at zero. The initial point is excluded from
    fitting because the model initial condition is supplied independently.
@@ -31,7 +31,7 @@ report. No branch depends on C-PAM name or dosage.
 | DF evolution and gamma fit | `backend/app/pbm_model/eqmom.py` | `simulateDF`, `DFObjective` |
 | Two-node log-normal inversion | `eqmom._two_node_lognormal` | `computeLogNormalNew.m` |
 | Secondary Gauss-Wigert quadrature | `eqmom._gauss_wigert` | `computeGaussWigert.m` |
-| Aggregation and breakup sources | `eqmom._moment_increment` | `momentIncrement` in `fit_EQMOM_general_PCC.m` |
+| Aggregation and breakup sources | `eqmom._moment_derivative` | `momentDerivative` in `fit_EQMOM_general_PCC.m` |
 | Stage 2 objective | `optimization._stage_two_functions` | `trackedResidual` |
 | Fit diagnostics | `pbm_model/metrics.py` | `evaluateCandidate` |
 
@@ -48,18 +48,19 @@ report. No branch depends on C-PAM name or dosage.
 
 The current source data contain different apparent moment normalizations. The
 software therefore does not silently rescale moments. It records the modeled
-and experimental initial `d43` and raises a visible warning above 5% relative
-difference. It also warns when measured DF values exceed the supplied limiting
-`DF_max`. A run with either warning requires data-owner review before it can
-support a scientific claim.
+and experimental initial `d43` difference in the optimization audit. It also
+records when measured DF values exceed the supplied limiting `DF_max`. Such a
+diagnostic requires data-owner review before the run can support a scientific
+claim.
 
 ## Numerical Method
 
-The trajectory integrator uses the supplied MATLAB strategy: a one-second
-outer step with step halving whenever a candidate moment state is not positive
-and realizable. The minimum substep is `dt/1024` and at most 4096 attempts are
-allowed per outer step. Numerical equivalence must still be established with
-golden trajectories before publication-grade claims are made.
+The log-normal inversion ports the supplied four-slot Ridder search and Jacobi
+eigensolver. The trajectory integrator uses the supplied MATLAB strategy: a
+one-second outer step with step halving whenever a candidate moment state is
+not positive and realizable. The minimum substep is `dt/1024` and at most 4096
+attempts are allowed per outer step. Cross-runtime equivalence still requires
+golden MATLAB trajectories before publication-grade claims are made.
 
 ## Deliberate Exclusions
 

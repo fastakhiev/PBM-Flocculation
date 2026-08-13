@@ -18,7 +18,7 @@ optimization module.
 
 ## Scientific Status
 
-Protocol version: `EQMOM-PCC-2STAGE-1.0`.
+Protocol version: `EQMOM-PCC-2STAGE-1.1`.
 
 The Python implementation follows the supplied general PCC MATLAB code. It
 has not yet been independently certified as numerically equivalent to the
@@ -64,7 +64,7 @@ Initial moments must contain exactly five positive values:
 ```csv
 value
 1
-0.679
+0.57
 0.82
 1.8
 7
