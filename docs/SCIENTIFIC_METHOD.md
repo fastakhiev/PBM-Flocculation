@@ -9,12 +9,13 @@ implementation reference is the supplied `matlab_code/fit_EQMOM_general_PCC.m`.
 
 ## Calibration Protocol
 
-The protocol identifier is `EQMOM-PCC-2STAGE-1.1`.
+The protocol identifier is `EQMOM-PCC-2STAGE-1.2`.
 
 1. Measurement time must start at zero. The initial point is excluded from
    fitting because the model initial condition is supplied independently.
 2. `gamma` is estimated by bounded scalar minimization of DF residual SSE at
-   every subsequent measurement.
+   every subsequent measurement. The model `DF0` is entered explicitly and
+   independently from the first experimental DF value.
 3. The estimated `gamma` is fixed.
 4. `alpha_max` and `B` are estimated by DEA or GA over all subsequent `d43`
    measurements, followed by deterministic bounded least-squares polishing.
@@ -44,6 +45,7 @@ report. No branch depends on C-PAM name or dosage.
 | `G` | s^-1 |
 | Primary diameter `d0` | nm in UI; converted to m inside the kernel |
 | `gamma` | min^-1 |
+| Model `DF0` | dimensionless; required manual input |
 | Initial moments | source normalization; `M4/M3` must match the experimental `d43` unit |
 
 The current source data contain different apparent moment normalizations. The

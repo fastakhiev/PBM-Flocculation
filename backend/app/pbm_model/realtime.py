@@ -25,7 +25,7 @@ def run_realtime_simulation(
     config = EQMOMConfig(
         time_minutes=dense_time,
         moments0=moments,
-        df0=float(csv_data["DF"].iloc[0]),
+        df0=float(opt_params.get("df0") or csv_data["DF"].iloc[0]),
         df_max=float(dFmax_val),
         shear_rate=float(G),
         primary_diameter_nm=float(do),

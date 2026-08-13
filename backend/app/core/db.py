@@ -64,6 +64,7 @@ def create_db_and_tables() -> None:
                 amax REAL NOT NULL,
                 b REAL NOT NULL,
                 gama REAL NOT NULL,
+                df0 REAL,
                 gof REAL NOT NULL,
                 optimization_time REAL NOT NULL,
                 moments_json TEXT,
@@ -78,6 +79,8 @@ def create_db_and_tables() -> None:
             connection.execute("ALTER TABLE optimized ADD COLUMN moments_json TEXT")
         if "audit_run_id" not in columns:
             connection.execute("ALTER TABLE optimized ADD COLUMN audit_run_id TEXT")
+        if "df0" not in columns:
+            connection.execute("ALTER TABLE optimized ADD COLUMN df0 REAL")
 
 
 def save_optimization_result(job_id: str, result: dict, report_json: str, created_at: str) -> str:
@@ -111,9 +114,9 @@ def save_optimization_result(job_id: str, result: dict, report_json: str, create
         connection.execute(
             """
             INSERT INTO optimized (
-                id, g, do, cpamm, dosage, amax, b, gama, gof,
+                id, g, do, cpamm, dosage, amax, b, gama, df0, gof,
                 optimization_time, moments_json, audit_run_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(uuid4()),
@@ -124,6 +127,7 @@ def save_optimization_result(job_id: str, result: dict, report_json: str, create
                 result["amax"],
                 result["B"],
                 result["gama"],
+                result.get("df0"),
                 result["gof"],
                 result["optimization_time"],
                 json.dumps(result["moments"]),

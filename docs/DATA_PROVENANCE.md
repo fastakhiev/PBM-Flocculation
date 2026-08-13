@@ -30,6 +30,16 @@ data owner directly corrected the value used for the MATLAB result to
 `M1 = 0.57`. The local `PCC_test_BHMW_14mg_moments.csv` and MATLAB runner use
 the corrected value; both source records must be retained with the project.
 
+For E2 8 mg/g, the data owner directly confirmed on 2026-08-13 that the 17
+experimental `d43` and `DF` values and moments `[1; 1.2187; 1.9071; 3.8319;
+9.8864]` are correct, and corrected `DF_max` from `2.72` to `2.49`. The local
+`PCC_test_E2_8mg_d43_DF.csv` uses the corrected value.
+
+For E1 4 mg/g, the data owner clarified on 2026-08-13 that the experimental
+series still begins with `DF_exp(1) = 1.65`, while the source Excel model input
+was separately set to `DF0 = 1.79`; `DF_max = 2.39`. The CSV retains the
+experimental `1.65`, and `DF0 = 1.79` must be entered as a separate model input.
+
 Every optimization report records the SHA-256 hashes and original filenames of
 the two uploaded CSV files. A report is only reproducible when those exact
 inputs are retained under the grant's data-management policy.

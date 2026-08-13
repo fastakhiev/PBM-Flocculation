@@ -119,6 +119,7 @@ def _optimization_task_impl(
     dosage,
     experimental_filename,
     moments_filename,
+    df0=None,
     *,
     cancel_event=None,
 ):
@@ -126,13 +127,19 @@ def _optimization_task_impl(
         csv_data_exp, df_max = _read_experimental_csv(csv_str_exp)
         G_val = float(g)
         do_val = float(do)
+        DF0_val = None if df0 in (None, "") else float(df0)
         moments = _read_initial_moments(csv_str_init)
 
         if not np.isfinite(G_val) or G_val <= 0 or not np.isfinite(do_val) or do_val <= 0:
             raise ValueError("Shear rate and primary particle diameter must be positive finite values.")
+        if DF0_val is not None and (not np.isfinite(DF0_val) or DF0_val <= 0):
+            raise ValueError("DF0 must be a positive finite value.")
 
         cancel_check = cancel_event.is_set if cancel_event is not None else None
-        args = (csv_data_exp, G_val, do_val, moments, df_max, e1_index, dosage, cancel_check)
+        args = (
+            csv_data_exp, G_val, do_val, moments, df_max, e1_index, dosage,
+            cancel_check, DF0_val,
+        )
         if optimization_algorithm == "Differential Evolution Algorithm (DEA)":
             results = run_optimization(*args)
         elif optimization_algorithm == "Genetic Algorithm (GA)":
@@ -208,6 +215,7 @@ async def optimization_task(
     dosage,
     experimental_filename,
     moments_filename,
+    df0=None,
 ) -> str:
     job = create_job()
     asyncio.create_task(
@@ -223,6 +231,7 @@ async def optimization_task(
             dosage,
             experimental_filename,
             moments_filename,
+            df0,
         )
     )
     return job.id

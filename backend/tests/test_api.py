@@ -70,7 +70,7 @@ class APITests(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
 
     def test_upload_rejects_non_csv_extension(self):
-        form_values = ["312", "100", "BHMW", "Differential Evolution Algorithm (DEA)", "14"]
+        form_values = ["312", "100", "BHMW", "Differential Evolution Algorithm (DEA)", "14", "1.65"]
         multipart = [("data", (None, value)) for value in form_values]
         multipart.extend(
             [
@@ -81,6 +81,19 @@ class APITests(unittest.TestCase):
         response = self.client.post("/api/start_optimize", files=multipart)
         self.assertEqual(response.status_code, 422)
         self.assertIn(".csv", response.json()["detail"])
+
+    def test_optimization_requires_explicit_df0(self):
+        form_values = ["312", "100", "BHMW", "Differential Evolution Algorithm (DEA)", "14"]
+        multipart = [("data", (None, value)) for value in form_values]
+        multipart.extend(
+            [
+                ("file_exp", ("experiment.csv", b"invalid", "text/csv")),
+                ("file_init", ("moments.csv", b"value\n1\n2\n3\n4\n5", "text/csv")),
+            ]
+        )
+        response = self.client.post("/api/start_optimize", files=multipart)
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("DF0", response.json()["detail"])
 
 
 if __name__ == "__main__":

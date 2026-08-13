@@ -18,7 +18,7 @@ optimization module.
 
 ## Scientific Status
 
-Protocol version: `EQMOM-PCC-2STAGE-1.1`.
+Protocol version: `EQMOM-PCC-2STAGE-1.2`.
 
 The Python implementation follows the supplied general PCC MATLAB code. It
 has not yet been independently certified as numerically equivalent to the
@@ -58,6 +58,9 @@ dF max;;2.19
 
 Time must start at zero and increase strictly. Decimal commas and decimal
 points are accepted.
+
+The model initial fractal dimension `DF0` is entered separately on the
+optimization page. It is not inferred from the first experimental DF value.
 
 Initial moments must contain exactly five positive values:
 

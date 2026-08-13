@@ -104,6 +104,7 @@ def fit_gamma(
     df_exp,
     df_max: float,
     *,
+    df0: float | None = None,
     upper: float = 10.0,
     fit_indices=None,
 ) -> tuple[float, float]:
@@ -114,7 +115,9 @@ def fit_gamma(
 
     dt_seconds = 1.0
     steps = np.rint(time * 60.0 / dt_seconds).astype(int)
-    df0 = float(observed[0])
+    initial_df = float(observed[0]) if df0 is None else float(df0)
+    if not np.isfinite(initial_df) or initial_df <= 0:
+        raise ValueError("DF0 must be a positive finite value.")
     indices = (
         np.arange(1, observed.size, dtype=int)
         if fit_indices is None
@@ -127,7 +130,7 @@ def fit_gamma(
         factor = 1.0 - gamma * dt_seconds / 60.0
         if factor < 0:
             return 1e30
-        predicted = df_max - (df_max - df0) * factor**steps
+        predicted = df_max - (df_max - initial_df) * factor**steps
         residual = predicted[indices] - observed[indices]
         return float(residual @ residual)
 

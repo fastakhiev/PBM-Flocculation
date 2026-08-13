@@ -102,9 +102,14 @@ if cfg.sampleStep(1) ~= 0 || any(diff(cfg.sampleStep) <= 0)
 end
 
 cfg.M0 = M0;
-cfg.DF0 = DF_exp(1);
+cfg.DF0 = getOption(options,'DF0',DF_exp(1));
 cfg.DF_max = DF_max;
 cfg.gamma = NaN;
+
+if ~isscalar(cfg.DF0) || ~isfinite(cfg.DF0) || ...
+        ~isreal(cfg.DF0) || cfg.DF0 <= 0
+    error('options.DF0 must be one positive finite real scalar.');
+end
 
 cfg.v = getOption(options,'v',1e-6);
 cfg.G = getOption(options,'G',312);

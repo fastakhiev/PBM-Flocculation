@@ -23,7 +23,7 @@ POLISH_START_FRACTIONS = ((0.25, 0.10), (0.50, 0.50), (0.75, 0.90))
 
 ALPHA_BOUNDS = (1e-6, 1.0)
 B_BOUNDS = (1e-8, 500.0)
-PROTOCOL_VERSION = "EQMOM-PCC-2STAGE-1.1"
+PROTOCOL_VERSION = "EQMOM-PCC-2STAGE-1.2"
 
 
 class OptimizationCancelled(RuntimeError):
@@ -35,14 +35,14 @@ def _raise_if_cancelled(cancel_check: Callable[[], bool] | None) -> None:
         raise OptimizationCancelled("Optimization was cancelled.")
 
 
-def make_eqmom_config(csv_data, G, do, moments, df_max, cancel_check=None):
+def make_eqmom_config(csv_data, G, do, moments, df_max, cancel_check=None, df0=None):
     time_values = csv_data["Time(min)"].to_numpy(dtype=float)
     relative_time = time_values - time_values[0]
     df_values = csv_data["DF"].to_numpy(dtype=float)
     return EQMOMConfig(
         time_minutes=relative_time,
         moments0=np.asarray(moments, dtype=float),
-        df0=float(df_values[0]),
+        df0=float(df_values[0]) if df0 is None else float(df0),
         df_max=float(df_max),
         shear_rate=float(G),
         primary_diameter_nm=float(do),
@@ -87,17 +87,18 @@ class _OptimizationContext:
         self.gamma = gamma
 
 
-def _prepare_optimization(csv_data, G, do, moments, df_max, cancel_check=None):
+def _prepare_optimization(csv_data, G, do, moments, df_max, cancel_check=None, df0=None):
     # The supplied MATLAB protocol excludes only the initial measurement,
     # which is fixed by the initial conditions. No material-specific fitting
     # windows or substituted operating conditions are applied.
     fit_indices = np.arange(1, len(csv_data), dtype=int)
-    model = make_eqmom_config(csv_data, G, do, moments, df_max, cancel_check)
+    model = make_eqmom_config(csv_data, G, do, moments, df_max, cancel_check, df0)
     df_exp = csv_data["DF"].to_numpy(dtype=float)
     gamma, gamma_sse = fit_gamma(
         model.time_minutes,
         df_exp,
         model.df_max,
+        df0=model.df0,
         fit_indices=fit_indices,
     )
     context = _OptimizationContext(model, gamma)
@@ -182,6 +183,7 @@ def _optimization_response(
         "amax": float(parameters[0]),
         "B": float(parameters[1]),
         "gama": float(gamma),
+        "df0": float(model.df0),
         "g": float(G),
         "do": float(do),
         "cpamm": e1_index,
@@ -201,6 +203,8 @@ def _optimization_response(
             "fit_indices_zero_based": fit_indices.tolist(),
             "experimental_shear_rate_s-1": float(G),
             "model_shear_rate_s-1": float(model.shear_rate),
+            "model_initial_df": float(model.df0),
+            "experimental_initial_df": float(observed_df[0]),
             "dt_seconds": float(model.dt_seconds),
             "random_seed": RANDOM_SEED,
             "parameter_bounds": {"alpha_max": list(ALPHA_BOUNDS), "B": list(B_BOUNDS)},
@@ -244,10 +248,12 @@ def _optimization_response(
     }
 
 
-def run_optimization(csv_data, G, do, moments, df_max, e1_index, dosage, cancel_check=None):
+def run_optimization(
+    csv_data, G, do, moments, df_max, e1_index, dosage, cancel_check=None, df0=None
+):
     start_time = time.monotonic()
     model, gamma, gamma_sse, objective, residual, fit_indices = _prepare_optimization(
-        csv_data, G, do, moments, df_max, cancel_check
+        csv_data, G, do, moments, df_max, cancel_check, df0
     )
     _raise_if_cancelled(cancel_check)
     result = differential_evolution(
@@ -305,7 +311,9 @@ def run_optimization(csv_data, G, do, moments, df_max, e1_index, dosage, cancel_
     return {"success": False, "message": "EQMOM optimization failed to find a finite solution."}
 
 
-def run_optimization_ga(csv_data, G, do, moments, df_max, e1_index, dosage, cancel_check=None):
+def run_optimization_ga(
+    csv_data, G, do, moments, df_max, e1_index, dosage, cancel_check=None, df0=None
+):
     # geneticalgorithm imports its optional plotting stack at module load time.
     # Keep that cost out of application startup and DEA-only sessions.
     from geneticalgorithm import geneticalgorithm as ga
@@ -316,7 +324,7 @@ def run_optimization_ga(csv_data, G, do, moments, df_max, e1_index, dosage, canc
 
     start_time = time.monotonic()
     eqmom_model, gamma, gamma_sse, objective, residual, fit_indices = _prepare_optimization(
-        csv_data, G, do, moments, df_max, cancel_check
+        csv_data, G, do, moments, df_max, cancel_check, df0
     )
     algorithm_param = {
         "max_num_iteration": GA_MAX_ITERATIONS,

@@ -32,6 +32,9 @@ DF_max = 2.19;
 options = struct;
 options.caseName = 'PCC example';
 
+% Optional model initial DF. Omit this field to use DF_exp(1).
+% options.DF0 = 1.79;
+
 % Initial guess and bounds: [alpha_max,B]
 options.p0 = [0.70,40.2];
 options.lb = [1e-6,1e-8];

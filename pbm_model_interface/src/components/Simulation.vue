@@ -330,6 +330,11 @@ onUnmounted(() => {
                 <td>min⁻¹</td>
               </tr>
               <tr>
+                <td>Initial fractal dimension (DF<sub>0</sub>)</td>
+                <td>{{ optimizationInfo.df0 != null ? optimizationInfo.df0.toFixed(2) : '-' }}</td>
+                <td>-</td>
+              </tr>
+              <tr>
                 <td>Optimization time</td>
                 <td>{{ optimizationInfo.optimization_time.toFixed(2) }}</td>
                 <td>s</td>

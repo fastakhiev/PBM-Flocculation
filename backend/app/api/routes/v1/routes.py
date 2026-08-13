@@ -45,18 +45,19 @@ async def start_optimize(
 ):
     from app.pbm_model.optimization_simulation import optimization_task
 
-    if len(data) != 5:
-        raise HTTPException(status_code=422, detail="Exactly five optimization form values are required.")
+    if len(data) != 6:
+        raise HTTPException(status_code=422, detail="Exactly six optimization form values are required, including DF0.")
     if str(data[3]) not in ALGORITHMS:
         raise HTTPException(status_code=422, detail="Unknown optimization algorithm.")
     try:
         g = float(data[0])
         primary_diameter = float(data[1])
         dosage = int(data[4])
+        df0 = float(data[5])
     except (TypeError, ValueError) as error:
-        raise HTTPException(status_code=422, detail="G, d0, and dosage must be numeric.") from error
-    if g <= 0 or primary_diameter <= 0 or dosage <= 0:
-        raise HTTPException(status_code=422, detail="G, d0, and dosage must be positive.")
+        raise HTTPException(status_code=422, detail="G, d0, DF0, and dosage must be numeric.") from error
+    if g <= 0 or primary_diameter <= 0 or dosage <= 0 or df0 <= 0:
+        raise HTTPException(status_code=422, detail="G, d0, DF0, and dosage must be positive.")
     csv_str_exp = await _read_csv_upload(file_exp, "Experimental data")
     csv_str_init = await _read_csv_upload(file_init, "Initial moments")
 
@@ -70,6 +71,7 @@ async def start_optimize(
         dosage,
         file_exp.filename or "experimental.csv",
         file_init.filename or "moments.csv",
+        df0,
     )
     return str(task_id)
 
@@ -145,6 +147,7 @@ async def start_simulation(file: UploadFile = File(...)):
             "amax": data["amax"],
             "B": data["b"],
             "gama": data["gama"],
+            "df0": data["df0"],
             "moments": json.loads(data["moments_json"]) if data["moments_json"] else None,
         },
         data["g"],
@@ -191,6 +194,7 @@ async def check_optimization():
             "amax": active["amax"],
             "b": active["b"],
             "gama": active["gama"],
+            "df0": active["df0"],
             "gof": active["gof"],
             "optimization_time": active["optimization_time"],
             "audit_run_id": active["audit_run_id"],
