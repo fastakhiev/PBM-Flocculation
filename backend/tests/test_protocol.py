@@ -3,6 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
+from app.pbm_model.eqmom import fit_gamma
 from app.pbm_model.optimization import PROTOCOL_VERSION, _prepare_optimization
 
 
@@ -45,6 +46,16 @@ class ProtocolTests(unittest.TestCase):
         self.assertAlmostEqual(data["DF"].iloc[0], 1.65)
         self.assertAlmostEqual(model.df0, 1.79)
         self.assertGreater(gamma, 0.0)
+
+    def test_e3_8_matlab_default_df0_reproduces_published_gamma(self):
+        time = np.array(
+            [0, 0.5, 1.4, 2.3, 3.3, 4.2, 5.1, 6, 6.9, 7.9, 8.8, 9.7, 10.6, 11.5, 12.5, 13.4, 14.3]
+        )
+        observed_df = np.array(
+            [1.65, 1.59, 2.08, 2.24, 2.34, 2.4, 2.45, 2.48, 2.51, 2.53, 2.54, 2.55, 2.56, 2.56, 2.57, 2.58, 2.58]
+        )
+        gamma, _ = fit_gamma(time, observed_df, 2.58, df0=observed_df[0])
+        self.assertAlmostEqual(gamma, 0.382221467, places=8)
 
 
 if __name__ == "__main__":

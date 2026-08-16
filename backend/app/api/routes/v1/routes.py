@@ -23,6 +23,7 @@ MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 ALGORITHMS = {
     "Differential Evolution Algorithm (DEA)",
     "Genetic Algorithm (GA)",
+    "MATLAB-compatible Multi-start Least Squares (MLS)",
 }
 
 

@@ -11,7 +11,12 @@ import pandas as pd
 import scipy
 
 from app.core.jobs import Job, cancel_job, create_job, get_job, run_job_in_thread
-from app.pbm_model.optimization import PROTOCOL_VERSION, run_optimization, run_optimization_ga
+from app.pbm_model.optimization import (
+    PROTOCOL_VERSION,
+    run_optimization,
+    run_optimization_ga,
+    run_optimization_matlab,
+)
 from app.pbm_model.realtime import run_realtime_simulation
 from app.version import APP_VERSION
 
@@ -150,6 +155,8 @@ def _optimization_task_impl(
             results = run_optimization(*args)
         elif optimization_algorithm == "Genetic Algorithm (GA)":
             results = run_optimization_ga(*args)
+        elif optimization_algorithm == "MATLAB-compatible Multi-start Least Squares (MLS)":
+            results = run_optimization_matlab(*args)
         else:
             raise ValueError("Unknown optimization algorithm")
 

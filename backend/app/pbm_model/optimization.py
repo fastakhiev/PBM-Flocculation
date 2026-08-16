@@ -20,9 +20,33 @@ RANDOM_SEED = int(os.getenv("PBM_RANDOM_SEED", "2026"))
 POLISH_TOLERANCE = 1e-7
 POLISH_MAX_EVALUATIONS = 60
 POLISH_START_FRACTIONS = ((0.25, 0.10), (0.50, 0.50), (0.75, 0.90))
+MATLAB_MAX_EVALUATIONS = 3000
+MATLAB_START_POINTS = (
+    (0.10, 20.0),
+    (0.15, 30.0),
+    (0.20, 40.0),
+    (0.25, 50.0),
+    (0.30, 50.0),
+    (0.35, 55.0),
+    (0.35, 60.0),
+    (0.40, 65.0),
+    (0.45, 70.0),
+    (0.50, 75.0),
+    (0.55, 80.0),
+    (0.60, 85.0),
+    (0.65, 90.0),
+    (0.70, 95.0),
+    (0.75, 100.0),
+    (0.80, 110.0),
+    (0.85, 120.0),
+    (0.90, 130.0),
+    (0.95, 140.0),
+    (0.99, 400.0),
+)
 
 ALPHA_BOUNDS = (1e-6, 1.0)
 B_BOUNDS = (1e-8, 500.0)
+MATLAB_B_BOUNDS = (1e-8, 360.0)
 PROTOCOL_VERSION = "EQMOM-PCC-2STAGE-1.2"
 
 
@@ -159,6 +183,7 @@ def _optimization_response(
     observed_df,
     fit_indices,
     algorithm,
+    parameter_bounds=None,
 ):
     predicted_d43, predicted_df = simulate_eqmom(parameters[0], parameters[1], gamma, model)
     d43_metrics = fit_statistics(observed_d43[fit_indices], predicted_d43[fit_indices], parameter_count=3)
@@ -207,7 +232,10 @@ def _optimization_response(
             "experimental_initial_df": float(observed_df[0]),
             "dt_seconds": float(model.dt_seconds),
             "random_seed": RANDOM_SEED,
-            "parameter_bounds": {"alpha_max": list(ALPHA_BOUNDS), "B": list(B_BOUNDS)},
+            "parameter_bounds": parameter_bounds or {
+                "alpha_max": list(ALPHA_BOUNDS),
+                "B": list(B_BOUNDS),
+            },
             "model_constants": {
                 "kinematic_viscosity_m2_s": float(model.kinematic_viscosity),
                 "temperature_k": float(model.temperature),
@@ -309,6 +337,81 @@ def run_optimization(
             },
         )
     return {"success": False, "message": "EQMOM optimization failed to find a finite solution."}
+
+
+def run_optimization_matlab(
+    csv_data, G, do, moments, df_max, e1_index, dosage, cancel_check=None, df0=None
+):
+    """Run the bounded multi-start least-squares protocol from the supplied MATLAB runner."""
+    start_time = time.monotonic()
+    model, gamma, gamma_sse, _objective, residual, fit_indices = _prepare_optimization(
+        csv_data, G, do, moments, df_max, cancel_check, df0
+    )
+    lower = np.array([ALPHA_BOUNDS[0], MATLAB_B_BOUNDS[0]], dtype=float)
+    upper = np.array([ALPHA_BOUNDS[1], MATLAB_B_BOUNDS[1]], dtype=float)
+    best_parameters = None
+    best_error = np.inf
+
+    for raw_start in MATLAB_START_POINTS:
+        _raise_if_cancelled(cancel_check)
+        start = np.clip(np.asarray(raw_start, dtype=float), lower, upper)
+        try:
+            result = least_squares(
+                residual,
+                start,
+                bounds=(lower, upper),
+                method="trf",
+                jac="2-point",
+                ftol=1e-9,
+                xtol=1e-9,
+                gtol=1e-8,
+                max_nfev=MATLAB_MAX_EVALUATIONS,
+            )
+        except (EQMOMError, ValueError, FloatingPointError, np.linalg.LinAlgError):
+            continue
+        error = float(result.fun @ result.fun)
+        if np.all(np.isfinite(result.x)) and np.isfinite(error) and error < best_error:
+            best_parameters = np.asarray(result.x, dtype=float)
+            best_error = error
+
+    _raise_if_cancelled(cancel_check)
+    if best_parameters is None:
+        return {
+            "success": False,
+            "message": "MATLAB-compatible multi-start optimization failed to find a finite solution.",
+        }
+
+    elapsed = time.monotonic() - start_time
+    return _optimization_response(
+        best_parameters,
+        best_error,
+        gamma,
+        gamma_sse,
+        model,
+        G,
+        do,
+        e1_index,
+        dosage,
+        elapsed,
+        "MATLAB-compatible multi-start least-squares optimization finished.",
+        csv_data["d43"].to_numpy(dtype=float),
+        csv_data["DF"].to_numpy(dtype=float),
+        fit_indices,
+        {
+            "name": "MATLAB-compatible Multi-start Least Squares (MLS)",
+            "solver": "scipy.optimize.least_squares",
+            "matlab_equivalent": "lsqnonlin with forward finite differences",
+            "start_points": [list(value) for value in MATLAB_START_POINTS],
+            "max_function_evaluations_per_start": MATLAB_MAX_EVALUATIONS,
+            "function_tolerance": 1e-9,
+            "step_tolerance": 1e-9,
+            "optimality_tolerance": 1e-8,
+        },
+        parameter_bounds={
+            "alpha_max": list(ALPHA_BOUNDS),
+            "B": list(MATLAB_B_BOUNDS),
+        },
+    )
 
 
 def run_optimization_ga(
