@@ -34,26 +34,36 @@ def stop_task(task_id: str) -> bool:
     return cancel_job(task_id)
 
 
-def _read_experimental_csv(csv_text: str) -> tuple[pd.DataFrame, float]:
+def _read_experimental_csv(csv_text: str) -> tuple[pd.DataFrame, float, float]:
     raw = pd.read_csv(StringIO(csv_text), sep=";", skiprows=2, engine="python", dtype=str)
     raw.columns = [str(column).strip().lstrip("\ufeff") for column in raw.columns]
     required = ["Time(min)", "d43", "DF"]
     missing = [column for column in required if column not in raw.columns]
     if missing:
         raise ValueError(f"Experimental CSV is missing columns: {', '.join(missing)}")
-    time_labels = raw["Time(min)"].fillna("").str.strip().str.lower().str.replace("_", " ")
+    time_labels = raw["Time(min)"].fillna("").str.strip().str.lower().str.replace("_", " ", regex=False)
     df_max_rows = time_labels.isin({"df max", "dfmax"})
+    df0_rows = time_labels.isin({"df 0", "df0"})
     if int(df_max_rows.sum()) != 1:
         raise ValueError("Experimental CSV must contain exactly one 'dF max' metadata row.")
-    df_max_value = str(raw.loc[df_max_rows, "DF"].iloc[0]).strip().replace(",", ".")
-    try:
-        df_max = float(df_max_value)
-    except ValueError as error:
-        raise ValueError("The DF value in the 'dF max' row must be numeric.") from error
-    if not np.isfinite(df_max) or df_max <= 0:
-        raise ValueError("DF_max must be a positive finite value.")
+    if int(df0_rows.sum()) != 1:
+        raise ValueError("Experimental CSV must contain exactly one 'dF 0' metadata row.")
 
-    measurement_rows = raw.loc[~df_max_rows, required].copy()
+    def read_metadata(rows: pd.Series, label: str) -> float:
+        value_text = str(raw.loc[rows, "DF"].iloc[0]).strip().replace(",", ".")
+        try:
+            value = float(value_text)
+        except ValueError as error:
+            raise ValueError(f"The DF value in the '{label}' row must be numeric.") from error
+        if not np.isfinite(value) or value <= 0:
+            raise ValueError(f"{label.replace('dF', 'DF')} must be a positive finite value.")
+        return value
+
+    df_max = read_metadata(df_max_rows, "dF max")
+    df0 = read_metadata(df0_rows, "dF 0")
+
+    metadata_rows = df_max_rows | df0_rows
+    measurement_rows = raw.loc[~metadata_rows, required].copy()
     measurement_rows = measurement_rows.dropna(how="all")
     for column in required:
         measurement_rows[column] = pd.to_numeric(
@@ -75,7 +85,7 @@ def _read_experimental_csv(csv_text: str) -> tuple[pd.DataFrame, float]:
         raise ValueError("Experimental time must increase strictly without duplicate values.")
     if np.any(measurements[["d43", "DF"]].to_numpy(dtype=float) <= 0):
         raise ValueError("Experimental d43 and DF values must be positive.")
-    return measurements, df_max
+    return measurements, df_max, df0
 
 
 def _read_initial_moments(csv_text: str) -> np.ndarray:
@@ -119,21 +129,17 @@ def _optimization_task_impl(
     dosage,
     experimental_filename,
     moments_filename,
-    df0=None,
     *,
     cancel_event=None,
 ):
     try:
-        csv_data_exp, df_max = _read_experimental_csv(csv_str_exp)
+        csv_data_exp, df_max, DF0_val = _read_experimental_csv(csv_str_exp)
         G_val = float(g)
         do_val = float(do)
-        DF0_val = None if df0 in (None, "") else float(df0)
         moments = _read_initial_moments(csv_str_init)
 
         if not np.isfinite(G_val) or G_val <= 0 or not np.isfinite(do_val) or do_val <= 0:
             raise ValueError("Shear rate and primary particle diameter must be positive finite values.")
-        if DF0_val is not None and (not np.isfinite(DF0_val) or DF0_val <= 0):
-            raise ValueError("DF0 must be a positive finite value.")
 
         cancel_check = cancel_event.is_set if cancel_event is not None else None
         args = (
@@ -179,11 +185,19 @@ def _simulation_task_impl(opt_params, G, do, csv_str, mode="realtime", *, cancel
         _PREVIOUS_STATE = None
         if mode != "realtime":
             raise ValueError("Unknown simulation mode")
-        experimental, df_max = _read_experimental_csv(csv_str)
+        experimental, df_max, file_df0 = _read_experimental_csv(csv_str)
+        simulation_params = dict(opt_params)
+        saved_df0 = simulation_params.get("df0")
+        if saved_df0 is None:
+            simulation_params["df0"] = file_df0
+        elif not np.isclose(float(saved_df0), file_df0, rtol=0.0, atol=1e-12):
+            raise ValueError(
+                "The experimental CSV dF 0 value differs from the DF0 used for the saved optimization."
+            )
         relative_time = experimental["Time(min)"].to_numpy(dtype=float)
         relative_time -= relative_time[0]
         results_df, _ = run_realtime_simulation(
-            opt_params,
+            simulation_params,
             experimental,
             dFmax_val=df_max,
             G=float(G),
@@ -215,7 +229,6 @@ async def optimization_task(
     dosage,
     experimental_filename,
     moments_filename,
-    df0=None,
 ) -> str:
     job = create_job()
     asyncio.create_task(
@@ -231,7 +244,6 @@ async def optimization_task(
             dosage,
             experimental_filename,
             moments_filename,
-            df0,
         )
     )
     return job.id

@@ -10,7 +10,6 @@ const showDeleteConfirmation = ref(false);
 
 const field1 = ref('');
 const field2 = ref('');
-const field6 = ref('');
 const cpammOptions = ref(['E3', 'E2', 'E1', 'E1+', 'E1++++', 'BHMW']);
 const field3 = ref(cpammOptions.value[0]);
 const optimizationAlgorithms = ref(['Differential Evolution Algorithm (DEA)', 'Genetic Algorithm (GA)']);
@@ -251,10 +250,6 @@ async function handleSubmit() {
     error.value = 'Select an initial-moments CSV file.';
     return;
   }
-  if (!field6.value || Number(field6.value) <= 0) {
-    error.value = 'Enter a positive initial fractal dimension (DF₀).';
-    return;
-  }
   isLoading.value = true;
   error.value = null;
   taskResult.value = null;
@@ -271,7 +266,6 @@ async function handleSubmit() {
     formData.append('data', field3.value);
     formData.append('data', field4.value);
     formData.append('data', field5.value);
-    formData.append('data', field6.value);
 
     const response = await axios.post('/api/start_optimize', formData);
     const taskId = response.data;
@@ -399,10 +393,6 @@ function sanitizePositive2(e: Event) {
       </small>
       </div>
       <div class="form-group">
-        <label for="field6">Initial fractal dimension (DF₀)</label>
-        <input id="field6" v-model="field6" min="0.000001" type="number" step="any" placeholder="Enter the DF₀" required @keydown="blockInvalidKeys2"/>
-      </div>
-        <div class="form-group">
         <label for="field3">Cationic polyacrylamide (C-PAM) type</label>
         <div class="select-wrapper">
           <select id="field3" v-model="field3" required>

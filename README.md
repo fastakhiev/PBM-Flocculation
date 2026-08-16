@@ -41,8 +41,9 @@ See:
 
 ## Input Files
 
-Experimental data must be UTF-8, semicolon-separated, contain two metadata
-lines, at least five measurements, and one explicit `dF max` row:
+Experimental data must be UTF-8, semicolon-separated, contain two leading
+descriptor lines, at least five measurements, and exactly one `dF 0` and one
+`dF max` metadata row:
 
 ```csv
 ;BHMW;
@@ -53,14 +54,15 @@ Time(min);d43;DF
 1.4;23.135;1.7925
 2.3;26.589;1.8982
 3.3;32.217;1.9764
+dF 0;;1.79
 dF max;;2.19
 ```
 
 Time must start at zero and increase strictly. Decimal commas and decimal
 points are accepted.
 
-The model initial fractal dimension `DF0` is entered separately on the
-optimization page. It is not inferred from the first experimental DF value.
+The model initial fractal dimension `DF0` is read from the `dF 0` metadata row.
+It is not inferred from the first experimental DF value.
 
 Initial moments must contain exactly five positive values:
 

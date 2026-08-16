@@ -13,19 +13,26 @@ Time(min);d43;DF
 1.4;23.135;1.7925
 2.3;26.589;1.8982
 3.3;32.217;1.9764
+dF 0;;1.79
 dF max;;2.19
 """
 
 
 class InputValidationTests(unittest.TestCase):
     def test_explicit_df_max_footer_is_required(self):
-        measurements, df_max = _read_experimental_csv(VALID_EXPERIMENT)
+        measurements, df_max, df0 = _read_experimental_csv(VALID_EXPERIMENT)
         self.assertEqual(len(measurements), 5)
         self.assertAlmostEqual(df_max, 2.19)
+        self.assertAlmostEqual(df0, 1.79)
 
         without_footer = VALID_EXPERIMENT.replace("dF max;;2.19\n", "")
         with self.assertRaisesRegex(ValueError, "dF max"):
             _read_experimental_csv(without_footer)
+
+    def test_explicit_df0_footer_is_required(self):
+        without_df0 = VALID_EXPERIMENT.replace("dF 0;;1.79\n", "")
+        with self.assertRaisesRegex(ValueError, "dF 0"):
+            _read_experimental_csv(without_df0)
 
     def test_time_must_start_at_zero_and_increase_strictly(self):
         shifted = VALID_EXPERIMENT.replace("0;0.414", "0.1;0.414", 1)

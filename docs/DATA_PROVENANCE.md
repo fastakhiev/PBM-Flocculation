@@ -38,7 +38,7 @@ experimental `d43` and `DF` values and moments `[1; 1.2187; 1.9071; 3.8319;
 For E1 4 mg/g, the data owner clarified on 2026-08-13 that the experimental
 series still begins with `DF_exp(1) = 1.65`, while the source Excel model input
 was separately set to `DF0 = 1.79`; `DF_max = 2.39`. The CSV retains the
-experimental `1.65`, and `DF0 = 1.79` must be entered as a separate model input.
+experimental `1.65` and records the separate model input as `dF 0;;1.79`.
 
 Every optimization report records the SHA-256 hashes and original filenames of
 the two uploaded CSV files. A report is only reproducible when those exact
