@@ -49,6 +49,8 @@ on 2026-08-24. In the scientific runner, model `DF0` defaults to
 `DF_exp(1)`. Therefore E1 6, E3 6, and E3 8 retain their second experimental
 DF measurements (`1.58`, `1.60`, and `1.59`) but use model `DF0 = 1.65`.
 E1 4 remains the documented exception with `DF0 = 1.79`. Its nearly
-degenerate `M2` was projected from `3.49534921368` to `3.49534922` (an
-absolute change of `6.32e-9`) solely to make the supplied moment vector
-numerically realizable; this correction must be disclosed with derived runs.
+degenerate moments are retained verbatim. Because decimal rounding makes the
+final canonical coordinate slightly negative, the numerical inversion uses
+the one-node log-normal boundary that reconstructs all five supplied moments
+with maximum relative log error below `2.4e-11`; the uploaded values themselves
+are not changed.

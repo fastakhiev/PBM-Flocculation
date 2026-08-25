@@ -15,6 +15,9 @@ class EQMOMCancelled(RuntimeError):
     pass
 
 
+SINGLE_NODE_PROJECTION_LOG_TOLERANCE = 1e-9
+
+
 @dataclass(frozen=True)
 class EQMOMConfig:
     time_minutes: np.ndarray
@@ -410,13 +413,42 @@ def _two_node_lognormal(moments: np.ndarray) -> tuple[np.ndarray, np.ndarray, fl
     if not np.isfinite(variance_limit) or variance_limit <= 1e-14:
         raise EQMOMError("The moment vector is degenerate.")
 
-    (
-        sigma_squared,
-        recurrence_a,
-        recurrence_b,
-        boundary_coordinates,
-        reference_coordinates,
-    ) = _matlab_lognormal_boundary(normalized, variance_limit)
+    try:
+        (
+            sigma_squared,
+            recurrence_a,
+            recurrence_b,
+            boundary_coordinates,
+            reference_coordinates,
+        ) = _matlab_lognormal_boundary(normalized, variance_limit)
+    except EQMOMError:
+        # Rounded single-node log-normal moments are extremely ill-conditioned:
+        # a tiny decimal transcription error can make the final canonical
+        # coordinate negative even though the KDF representation is unambiguous.
+        orders = np.arange(1.0, 5.0)
+        design = np.column_stack((orders, 0.5 * orders**2))
+        coefficients, *_ = np.linalg.lstsq(
+            design,
+            np.log(normalized[1:]),
+            rcond=None,
+        )
+        log_node, projected_variance = coefficients
+        log_residual = np.log(normalized[1:]) - design @ coefficients
+        if (
+            projected_variance <= 1e-14
+            or np.max(np.abs(log_residual))
+            > SINGLE_NODE_PROJECTION_LOG_TOLERANCE
+            or not np.all(np.isfinite(coefficients))
+        ):
+            raise
+        node = float(np.exp(log_node))
+        if not np.isfinite(node) or node <= 0.0:
+            raise
+        return (
+            np.array([moments[0], 0.0]),
+            np.array([node, 0.5]),
+            float(np.sqrt(projected_variance)),
+        )
 
     coordinate_number = 4
     for index in range(4):
@@ -425,10 +457,9 @@ def _two_node_lognormal(moments: np.ndarray) -> tuple[np.ndarray, np.ndarray, fl
             break
     node_count = (coordinate_number + coordinate_number % 2) // 2
 
-    if recurrence_b[0] <= 0 or not np.isfinite(recurrence_b[0]):
-        raise EQMOMError("The reduced moment vector is not realizable.")
-
     if node_count == 2:
+        if recurrence_b[0] <= 0 or not np.isfinite(recurrence_b[0]):
+            raise EQMOMError("The reduced moment vector is not realizable.")
         normalized_weights, nodes = _matlab_eigen_jacobi(
             recurrence_a,
             recurrence_b[:1],

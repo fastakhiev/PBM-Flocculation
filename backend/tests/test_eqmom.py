@@ -93,6 +93,31 @@ class EQMOMTests(unittest.TestCase):
         self.assertTrue(np.all(weights >= 0.0))
         self.assertTrue(np.all(nodes > 0.0))
 
+    def test_rounded_single_node_lognormal_moments_use_boundary_projection(self):
+        moments = np.array(
+            [
+                1.0,
+                1.86958435532,
+                3.49534921368,
+                6.53486348826,
+                12.2175157905,
+            ]
+        )
+
+        weights, nodes, sigma = _two_node_lognormal(moments)
+        reconstructed = np.array(
+            [
+                np.sum(weights * nodes**order)
+                * np.exp(0.5 * order**2 * sigma**2)
+                for order in range(5)
+            ]
+        )
+
+        np.testing.assert_allclose(weights, [1.0, 0.0], rtol=0.0, atol=0.0)
+        np.testing.assert_allclose(reconstructed, moments, rtol=3e-11, atol=0.0)
+        self.assertAlmostEqual(nodes[0], 1.8695834052808342, places=12)
+        self.assertAlmostEqual(sigma, 0.001008098896839969, places=15)
+
     def test_e2_6_table_parameters_produce_finite_reference_trajectory(self):
         gamma, _ = fit_gamma(TIME_E2_6, DF_E2_6, 2.55)
         config = EQMOMConfig(

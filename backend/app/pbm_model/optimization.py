@@ -5,7 +5,13 @@ from typing import Callable
 import numpy as np
 from scipy.optimize import least_squares
 
-from app.pbm_model.eqmom import EQMOMConfig, EQMOMError, fit_gamma, simulate_eqmom
+from app.pbm_model.eqmom import (
+    EQMOMConfig,
+    EQMOMError,
+    SINGLE_NODE_PROJECTION_LOG_TOLERANCE,
+    fit_gamma,
+    simulate_eqmom,
+)
 from app.pbm_model.metrics import fit_statistics
 
 
@@ -38,7 +44,7 @@ MULTISTART_POINTS = (
 
 ALPHA_BOUNDS = (1e-6, 1.0)
 B_BOUNDS = (1e-8, 360.0)
-PROTOCOL_VERSION = "EQMOM-PCC-2STAGE-1.5"
+PROTOCOL_VERSION = "EQMOM-PCC-2STAGE-1.6"
 
 
 class OptimizationCancelled(RuntimeError):
@@ -291,6 +297,9 @@ def _optimization_response(
                 "minimum_substep_seconds": float(model.minimum_substep_seconds),
                 "maximum_substeps": int(model.maximum_substeps),
                 "sigma_minimum": float(model.sigma_minimum),
+                "single_node_projection_log_tolerance": (
+                    SINGLE_NODE_PROJECTION_LOG_TOLERANCE
+                ),
             },
         },
         "algorithm": algorithm,

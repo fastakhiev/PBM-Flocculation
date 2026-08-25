@@ -22,7 +22,7 @@ optimization module.
 
 ## Scientific Status
 
-Protocol version: `EQMOM-PCC-2STAGE-1.5`.
+Protocol version: `EQMOM-PCC-2STAGE-1.6`.
 
 The Python implementation follows the supplied general PCC MATLAB code. It
 has not yet been independently certified as numerically equivalent to the

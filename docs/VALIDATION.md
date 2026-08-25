@@ -72,10 +72,10 @@ settings used for that smoke test are not scientific benchmarks and do not
 validate the current protocol or replace the Windows and MATLAB acceptance
 tests above.
 
-On 2026-08-25 protocol `EQMOM-PCC-2STAGE-1.5` was checked on macOS with the
+On 2026-08-25 protocol `EQMOM-PCC-2STAGE-1.6` was checked on macOS with the
 `PCC_test_N` files, `G=312 s^-1`, and `d0=100 nm`:
 
-- 28 backend tests and the TypeScript/Vite production build passed;
+- 29 backend tests and the TypeScript/Vite production build passed;
 - the current Python CycloneDX inventory passed `pip-audit` with no known
   vulnerabilities, and both development SBOM files parsed successfully;
 - `E3 8 mg/g`: two consecutive runs returned exactly the same
@@ -87,7 +87,16 @@ On 2026-08-25 protocol `EQMOM-PCC-2STAGE-1.5` was checked on macOS with the
   `0.30`.
 
 An expanded Halton screening found a lower `E3 8 mg/g` SSE at a remote
-high-`B` basin. It is deliberately not part of protocol 1.5 because the goal
+high-`B` basin. It is deliberately not part of protocol 1.6 because the goal
 is reproduction of the supplied MATLAB local-start protocol, not an unsupported
 claim of global identifiability. This sensitivity must be disclosed when
 interpreting fitted parameters.
+
+For `E1 4 mg/g`, the `PCC_test_N` input gives `M4/M3=1.8695901` while the
+experimental initial `d43` is `2.73`. With the documented `G=312 s^-1` and
+`d0=100 nm`, protocol 1.6 returns `alpha_max=1.0`, `B=61.7656`,
+`gamma=0.5362910`, and `SSE=8349.1273`. The Table 2 point
+`alpha_max=0.45`, `B=50` has `SSE=67896.6782` and predicts only
+`d43=4.25...10.56` after time zero. This dataset/model combination therefore
+cannot reproduce the published E1 4 result without a corrected input
+normalization or a different model configuration.

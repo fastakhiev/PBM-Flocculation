@@ -9,7 +9,7 @@ implementation reference is the supplied `matlab_code/fit_EQMOM_general_PCC.m`.
 
 ## Calibration Protocol
 
-The protocol identifier is `EQMOM-PCC-2STAGE-1.5`.
+The protocol identifier is `EQMOM-PCC-2STAGE-1.6`.
 
 1. Measurement time must start at zero. The initial point is excluded from
    fitting because the model initial condition is supplied independently.
@@ -62,7 +62,10 @@ claim.
 ## Numerical Method
 
 The log-normal inversion ports the supplied four-slot Ridder search and Jacobi
-eigensolver. The trajectory integrator uses the supplied MATLAB strategy: a
+eigensolver. A moment vector rejected only because rounded values lie within
+`1e-9` log-relative error of a one-node log-normal boundary uses that boundary
+representation; other non-realizable vectors remain invalid. The trajectory
+integrator uses the supplied MATLAB strategy: a
 one-second outer step with step halving whenever a candidate moment state is
 not positive and realizable. The minimum substep is `dt/1024` and at most 4096
 attempts are allowed per outer step. Rejected halvings reuse `dM/dt` because
