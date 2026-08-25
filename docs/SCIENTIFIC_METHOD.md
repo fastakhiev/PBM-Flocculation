@@ -9,7 +9,7 @@ implementation reference is the supplied `matlab_code/fit_EQMOM_general_PCC.m`.
 
 ## Calibration Protocol
 
-The protocol identifier is `EQMOM-PCC-2STAGE-1.2`.
+The protocol identifier is `EQMOM-PCC-2STAGE-1.5`.
 
 1. Measurement time must start at zero. The initial point is excluded from
    fitting because the model initial condition is supplied independently.
@@ -18,13 +18,16 @@ The protocol identifier is `EQMOM-PCC-2STAGE-1.2`.
    the experimental CSV `dF 0` metadata row and is independent from the first
    experimental DF value.
 3. The estimated `gamma` is fixed.
-4. `alpha_max` and `B` are estimated by DEA or GA over all subsequent `d43`
-   measurements, followed by deterministic bounded least-squares polishing.
+4. Every start point from the supplied MATLAB runner is refined independently
+   by bounded trust-region least squares using forward finite differences.
+   Invalid trajectories are assigned the same directional finite residual as
+   the runner. The solver is deterministic and implemented in SciPy; MATLAB is
+   not required at runtime.
 5. Selection is based on the lowest valid Stage 2 SSE. GOF is reported as a
    diagnostic and is not used as a stopping target or selection criterion.
 
-The random seed and every optimizer setting are included in the per-run JSON
-report. No branch depends on C-PAM name or dosage.
+Every optimizer setting is included in the per-run JSON report. No branch
+depends on C-PAM name or dosage.
 
 ## Code Map
 
@@ -34,7 +37,7 @@ report. No branch depends on C-PAM name or dosage.
 | Two-node log-normal inversion | `eqmom._two_node_lognormal` | `computeLogNormalNew.m` |
 | Secondary Gauss-Wigert quadrature | `eqmom._gauss_wigert` | `computeGaussWigert.m` |
 | Aggregation and breakup sources | `eqmom._moment_derivative` | `momentDerivative` in `fit_EQMOM_general_PCC.m` |
-| Stage 2 objective | `optimization._stage_two_functions` | `trackedResidual` |
+| Stage 2 objective and deterministic multi-start | `optimization._stage_two_functions`, `optimization._run_multistart_least_squares` | `trackedResidual`, `startPoints` |
 | Fit diagnostics | `pbm_model/metrics.py` | `evaluateCandidate` |
 
 ## Inputs And Units
@@ -62,16 +65,21 @@ The log-normal inversion ports the supplied four-slot Ridder search and Jacobi
 eigensolver. The trajectory integrator uses the supplied MATLAB strategy: a
 one-second outer step with step halving whenever a candidate moment state is
 not positive and realizable. The minimum substep is `dt/1024` and at most 4096
-attempts are allowed per outer step. Cross-runtime equivalence still requires
-golden MATLAB trajectories before publication-grade claims are made.
+attempts are allowed per outer step. Rejected halvings reuse `dM/dt` because
+the state and parameters have not changed; accepted moments are numerically
+identical to recomputing it. Cross-runtime equivalence still requires golden
+MATLAB trajectories before publication-grade claims are made.
 
 ## Deliberate Exclusions
 
-- Published Table 2 parameters never enter an optimization objective or start
-  point.
+- Published Table 2 parameters never enter an optimization objective or a
+  material-specific start point. The same supplied start set is used for every
+  case.
 - Experimental `G` is never replaced by another value.
 - No plateau-only or material-specific fitting window is used.
 - The application does not force parameters to agree with a paper.
 
 These constraints prevent circular validation. A discrepancy from the article
 is reported as a discrepancy to investigate, not corrected by hidden tuning.
+The protocol targets reproducibility of the supplied local multi-start method;
+it does not claim that the selected minimum is global outside those basins.

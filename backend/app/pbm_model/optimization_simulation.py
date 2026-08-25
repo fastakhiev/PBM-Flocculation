@@ -3,7 +3,6 @@ import hashlib
 import logging
 import platform
 import time
-from importlib.metadata import PackageNotFoundError, version
 from io import StringIO
 
 import numpy as np
@@ -11,19 +10,12 @@ import pandas as pd
 import scipy
 
 from app.core.jobs import Job, cancel_job, create_job, get_job, run_job_in_thread
-from app.pbm_model.optimization import PROTOCOL_VERSION, run_optimization, run_optimization_ga
+from app.pbm_model.optimization import PROTOCOL_VERSION, run_optimization
 from app.pbm_model.realtime import run_realtime_simulation
 from app.version import APP_VERSION
 
 
 _PREVIOUS_STATE: dict | None = None
-
-
-def _distribution_version(distribution: str, fallback: str) -> str:
-    try:
-        return version(distribution)
-    except PackageNotFoundError:
-        return fallback
 
 
 def check_status(task_id: str) -> Job | None:
@@ -146,12 +138,9 @@ def _optimization_task_impl(
             csv_data_exp, G_val, do_val, moments, df_max, e1_index, dosage,
             cancel_check, DF0_val,
         )
-        if optimization_algorithm == "Differential Evolution Algorithm (DEA)":
-            results = run_optimization(*args)
-        elif optimization_algorithm == "Genetic Algorithm (GA)":
-            results = run_optimization_ga(*args)
-        else:
+        if optimization_algorithm != "Python Multi-start Least Squares (PMLS)":
             raise ValueError("Unknown optimization algorithm")
+        results = run_optimization(*args)
 
         if not results.get("success"):
             return results
@@ -169,7 +158,6 @@ def _optimization_task_impl(
                 "numpy": np.__version__,
                 "scipy": scipy.__version__,
                 "pandas": pd.__version__,
-                "geneticalgorithm": _distribution_version("geneticalgorithm", "1.0.2"),
             },
         }
         return results

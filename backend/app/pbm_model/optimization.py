@@ -1,29 +1,44 @@
 import os
 import time
-from contextlib import redirect_stdout
 from typing import Callable
 
 import numpy as np
-from scipy.optimize import differential_evolution, least_squares
+from scipy.optimize import least_squares
 
 from app.pbm_model.eqmom import EQMOMConfig, EQMOMError, fit_gamma, simulate_eqmom
 from app.pbm_model.metrics import fit_statistics
 
 
-DE_MAXITER = int(os.getenv("PBM_DE_MAXITER", "50"))
-DE_POPSIZE = int(os.getenv("PBM_DE_POPSIZE", "10"))
-DE_TOL = float(os.getenv("PBM_DE_TOL", "0.02"))
-GA_MAX_ITERATIONS = int(os.getenv("PBM_GA_MAX_ITERATIONS", "50"))
-GA_POPULATION_SIZE = int(os.getenv("PBM_GA_POPULATION_SIZE", "30"))
-GA_MAX_ITERATION_WITHOUT_IMPROV = int(os.getenv("PBM_GA_MAX_ITERATION_WITHOUT_IMPROV", "12"))
-RANDOM_SEED = int(os.getenv("PBM_RANDOM_SEED", "2026"))
-POLISH_TOLERANCE = 1e-7
-POLISH_MAX_EVALUATIONS = 60
-POLISH_START_FRACTIONS = ((0.25, 0.10), (0.50, 0.50), (0.75, 0.90))
+MULTISTART_MAX_EVALUATIONS = 3000
+MULTISTART_FUNCTION_TOLERANCE = 1e-9
+MULTISTART_STEP_TOLERANCE = 1e-9
+MULTISTART_OPTIMALITY_TOLERANCE = 1e-8
+MULTISTART_POINTS = (
+    (0.10, 20.0),
+    (0.15, 30.0),
+    (0.20, 40.0),
+    (0.25, 50.0),
+    (0.30, 50.0),
+    (0.35, 55.0),
+    (0.35, 60.0),
+    (0.40, 65.0),
+    (0.45, 70.0),
+    (0.50, 75.0),
+    (0.55, 80.0),
+    (0.60, 85.0),
+    (0.65, 90.0),
+    (0.70, 95.0),
+    (0.75, 100.0),
+    (0.80, 110.0),
+    (0.85, 120.0),
+    (0.90, 130.0),
+    (0.95, 140.0),
+    (0.99, 400.0),
+)
 
 ALPHA_BOUNDS = (1e-6, 1.0)
-B_BOUNDS = (1e-8, 500.0)
-PROTOCOL_VERSION = "EQMOM-PCC-2STAGE-1.2"
+B_BOUNDS = (1e-8, 360.0)
+PROTOCOL_VERSION = "EQMOM-PCC-2STAGE-1.5"
 
 
 class OptimizationCancelled(RuntimeError):
@@ -60,24 +75,51 @@ def _stage_two_functions(config, observed_d43, fit_indices=None, cancel_check=No
     )
     if indices.ndim != 1 or indices.size < 2:
         raise ValueError("At least two d43 measurements are required for Stage 2.")
-    scale = max(float(np.std(observed[indices])), 1.0)
+    scale = max(float(np.std(observed[indices], ddof=1)), 1.0)
     penalty = indices.size * (4.0 * scale) ** 2
+
+    def invalid_residual(parameters):
+        parameter_lower = np.array([ALPHA_BOUNDS[0], B_BOUNDS[0]])
+        parameter_span = np.array(
+            [
+                ALPHA_BOUNDS[1] - ALPHA_BOUNDS[0],
+                B_BOUNDS[1] - B_BOUNDS[0],
+            ]
+        )
+        normalized = (
+            np.asarray(parameters, dtype=float) - parameter_lower
+        ) / parameter_span
+        direction = normalized[0] - normalized[1]
+        return (
+            4.0 * scale
+            + 0.05 * scale * direction * np.linspace(-1.0, 1.0, indices.size)
+        )
 
     def residual(parameters):
         _raise_if_cancelled(cancel_check)
         try:
-            predicted, _ = simulate_eqmom(float(parameters[0]), float(parameters[1]), config.gamma, config.model)
+            predicted, _ = simulate_eqmom(
+                float(parameters[0]),
+                float(parameters[1]),
+                config.gamma,
+                config.model,
+            )
             values = predicted[indices] - observed[indices]
             if np.any(~np.isfinite(values)):
-                return np.full(indices.size, np.sqrt(penalty / indices.size))
+                residual.last_valid = False
+                return invalid_residual(parameters)
+            residual.last_valid = True
             return values
         except (EQMOMError, ValueError, FloatingPointError, np.linalg.LinAlgError):
-            return np.full(indices.size, np.sqrt(penalty / indices.size))
+            residual.last_valid = False
+            return invalid_residual(parameters)
 
     def objective(parameters):
         values = residual(parameters)
         return float(values @ values)
 
+    residual.invalid_sse = penalty
+    residual.last_valid = False
     return objective, residual
 
 
@@ -111,36 +153,55 @@ def _prepare_optimization(csv_data, G, do, moments, df_max, cancel_check=None, d
     return model, gamma, gamma_sse, objective, residual, fit_indices
 
 
-def _polish_candidate(parameters, residual, cancel_check=None):
-    lower = np.array([ALPHA_BOUNDS[0], B_BOUNDS[0]])
-    upper = np.array([ALPHA_BOUNDS[1], B_BOUNDS[1]])
-    starts = [
-        np.asarray(parameters, dtype=float),
-        *(lower + np.asarray(fraction) * (upper - lower) for fraction in POLISH_START_FRACTIONS),
-    ]
-    best_parameters = starts[0]
-    best_values = residual(best_parameters)
-    best_error = float(best_values @ best_values)
+def _run_multistart_least_squares(residual, cancel_check=None):
+    lower = np.array([ALPHA_BOUNDS[0], B_BOUNDS[0]], dtype=float)
+    upper = np.array([ALPHA_BOUNDS[1], B_BOUNDS[1]], dtype=float)
+    best_parameters = None
+    best_error = np.inf
 
-    for start in starts:
-        _raise_if_cancelled(cancel_check)
-        try:
-            result = least_squares(
+    def is_valid(error):
+        return bool(
+            getattr(
                 residual,
+                "last_valid",
+                error < float(residual.invalid_sse) * (1.0 - 1e-12),
+            )
+        )
+
+    def tracked_residual(parameters):
+        nonlocal best_parameters, best_error
+        values = residual(parameters)
+        error = float(values @ values)
+        if (
+            np.all(np.isfinite(parameters))
+            and np.isfinite(error)
+            and is_valid(error)
+            and error < best_error
+        ):
+            best_parameters = np.asarray(parameters, dtype=float).copy()
+            best_error = error
+        return values
+
+    for raw_start in MULTISTART_POINTS:
+        _raise_if_cancelled(cancel_check)
+        start = np.clip(np.asarray(raw_start, dtype=float), lower, upper)
+        try:
+            least_squares(
+                tracked_residual,
                 start,
                 bounds=(lower, upper),
-                ftol=POLISH_TOLERANCE,
-                xtol=POLISH_TOLERANCE,
-                gtol=POLISH_TOLERANCE,
-                max_nfev=POLISH_MAX_EVALUATIONS,
+                method="trf",
+                jac="2-point",
+                ftol=MULTISTART_FUNCTION_TOLERANCE,
+                xtol=MULTISTART_STEP_TOLERANCE,
+                gtol=MULTISTART_OPTIMALITY_TOLERANCE,
+                max_nfev=MULTISTART_MAX_EVALUATIONS,
             )
-            error = float(result.fun @ result.fun)
-            if np.all(np.isfinite(result.x)) and np.isfinite(error) and error < best_error:
-                best_parameters = result.x
-                best_error = error
         except (EQMOMError, ValueError, FloatingPointError, np.linalg.LinAlgError):
             continue
-    return np.asarray(best_parameters, dtype=float), best_error
+
+    _raise_if_cancelled(cancel_check)
+    return best_parameters, best_error
 
 
 def _optimization_response(
@@ -160,19 +221,30 @@ def _optimization_response(
     fit_indices,
     algorithm,
 ):
-    predicted_d43, predicted_df = simulate_eqmom(parameters[0], parameters[1], gamma, model)
-    d43_metrics = fit_statistics(observed_d43[fit_indices], predicted_d43[fit_indices], parameter_count=3)
-    df_metrics = fit_statistics(observed_df[fit_indices], predicted_df[fit_indices], parameter_count=1)
+    predicted_d43, predicted_df = simulate_eqmom(
+        parameters[0], parameters[1], gamma, model
+    )
+    d43_metrics = fit_statistics(
+        observed_d43[fit_indices], predicted_d43[fit_indices], parameter_count=3
+    )
+    df_metrics = fit_statistics(
+        observed_df[fit_indices], predicted_df[fit_indices], parameter_count=1
+    )
     initial_model_d43 = float(predicted_d43[0])
     initial_experimental_d43 = float(observed_d43[0])
-    relative_initial_difference = abs(initial_model_d43 - initial_experimental_d43) / initial_experimental_d43
+    relative_initial_difference = (
+        abs(initial_model_d43 - initial_experimental_d43)
+        / initial_experimental_d43
+    )
     warnings = []
     if relative_initial_difference > 0.05:
         warnings.append(
             "Initial M4/M3 differs from experimental d43 by more than 5%; "
             "verify the moment normalization and d43 units."
         )
-    df_above_max_count = int(np.count_nonzero(np.asarray(observed_df, dtype=float) > model.df_max))
+    df_above_max_count = int(
+        np.count_nonzero(np.asarray(observed_df, dtype=float) > model.df_max)
+    )
     if df_above_max_count:
         warnings.append(
             f"{df_above_max_count} experimental DF value(s) exceed DF_max; "
@@ -206,7 +278,6 @@ def _optimization_response(
             "model_initial_df": float(model.df0),
             "experimental_initial_df": float(observed_df[0]),
             "dt_seconds": float(model.dt_seconds),
-            "random_seed": RANDOM_SEED,
             "parameter_bounds": {"alpha_max": list(ALPHA_BOUNDS), "B": list(B_BOUNDS)},
             "model_constants": {
                 "kinematic_viscosity_m2_s": float(model.kinematic_viscosity),
@@ -220,13 +291,6 @@ def _optimization_response(
                 "minimum_substep_seconds": float(model.minimum_substep_seconds),
                 "maximum_substeps": int(model.maximum_substeps),
                 "sigma_minimum": float(model.sigma_minimum),
-            },
-            "least_squares_polish": {
-                "start_fractions": [list(value) for value in POLISH_START_FRACTIONS],
-                "ftol": POLISH_TOLERANCE,
-                "xtol": POLISH_TOLERANCE,
-                "gtol": POLISH_TOLERANCE,
-                "max_function_evaluations_per_start": POLISH_MAX_EVALUATIONS,
             },
         },
         "algorithm": algorithm,
@@ -252,32 +316,12 @@ def run_optimization(
     csv_data, G, do, moments, df_max, e1_index, dosage, cancel_check=None, df0=None
 ):
     start_time = time.monotonic()
-    model, gamma, gamma_sse, objective, residual, fit_indices = _prepare_optimization(
+    model, gamma, gamma_sse, _objective, residual, fit_indices = _prepare_optimization(
         csv_data, G, do, moments, df_max, cancel_check, df0
     )
-    _raise_if_cancelled(cancel_check)
-    result = differential_evolution(
-        objective,
-        [ALPHA_BOUNDS, B_BOUNDS],
-        maxiter=DE_MAXITER,
-        popsize=DE_POPSIZE,
-        tol=DE_TOL,
-        polish=False,
-        disp=False,
-        updating="immediate",
-        workers=1,
-        strategy="best1bin",
-        mutation=(0.5, 1.0),
-        recombination=0.7,
-        init="latinhypercube",
-        seed=RANDOM_SEED,
-        callback=lambda _x, _convergence: bool(cancel_check and cancel_check()),
-    )
-    _raise_if_cancelled(cancel_check)
+    parameters, best_fun = _run_multistart_least_squares(residual, cancel_check)
     elapsed = time.monotonic() - start_time
-    if np.all(np.isfinite(result.x)) and np.isfinite(result.fun):
-        parameters, best_fun = _polish_candidate(result.x, residual, cancel_check)
-        elapsed = time.monotonic() - start_time
+    if parameters is not None and np.isfinite(best_fun):
         return _optimization_response(
             parameters,
             best_fun,
@@ -289,100 +333,26 @@ def run_optimization(
             e1_index,
             dosage,
             elapsed,
-            "Two-stage EQMOM optimization finished.",
+            "Two-stage Python multi-start least-squares optimization finished.",
             csv_data["d43"].to_numpy(dtype=float),
             csv_data["DF"].to_numpy(dtype=float),
             fit_indices,
             {
-                "name": "Differential Evolution Algorithm (DEA)",
-                "max_iterations": DE_MAXITER,
-                "population_size_multiplier": DE_POPSIZE,
-                "population_size": 2 * DE_POPSIZE,
-                "tolerance": DE_TOL,
-                "strategy": "best1bin",
-                "mutation": [0.5, 1.0],
-                "recombination": 0.7,
-                "initialization": "latinhypercube",
-                "updating": "immediate",
-                "workers": 1,
-                "deterministic_least_squares_polish": True,
+                "name": "Python Multi-start Least Squares (PMLS)",
+                "solver": "scipy.optimize.least_squares",
+                "method": "trust-region reflective",
+                "finite_difference": "forward two-point",
+                "supplied_start_points": [list(value) for value in MULTISTART_POINTS],
+                "local_start_count": len(MULTISTART_POINTS),
+                "invalid_starts_receive_finite_directional_residual": True,
+                "function_tolerance": MULTISTART_FUNCTION_TOLERANCE,
+                "step_tolerance": MULTISTART_STEP_TOLERANCE,
+                "optimality_tolerance": MULTISTART_OPTIMALITY_TOLERANCE,
+                "max_function_evaluations_per_start": MULTISTART_MAX_EVALUATIONS,
+                "deterministic": True,
             },
         )
-    return {"success": False, "message": "EQMOM optimization failed to find a finite solution."}
-
-
-def run_optimization_ga(
-    csv_data, G, do, moments, df_max, e1_index, dosage, cancel_check=None, df0=None
-):
-    # geneticalgorithm imports its optional plotting stack at module load time.
-    # Keep that cost out of application startup and DEA-only sessions.
-    from geneticalgorithm import geneticalgorithm as ga
-
-    class FastGeneticAlgorithm(ga):
-        def sim(self, variables):
-            return self.f(variables)
-
-    start_time = time.monotonic()
-    eqmom_model, gamma, gamma_sse, objective, residual, fit_indices = _prepare_optimization(
-        csv_data, G, do, moments, df_max, cancel_check, df0
-    )
-    algorithm_param = {
-        "max_num_iteration": GA_MAX_ITERATIONS,
-        "population_size": GA_POPULATION_SIZE,
-        "mutation_probability": 0.1,
-        "elit_ratio": 0.01,
-        "crossover_probability": 0.5,
-        "parents_portion": 0.3,
-        "crossover_type": "uniform",
-        "max_iteration_without_improv": GA_MAX_ITERATION_WITHOUT_IMPROV,
+    return {
+        "success": False,
+        "message": "Python multi-start least-squares optimization failed to find a valid trajectory.",
     }
-    model = FastGeneticAlgorithm(
-        function=objective,
-        dimension=2,
-        variable_type="real",
-        variable_boundaries=np.array([ALPHA_BOUNDS, B_BOUNDS]),
-        algorithm_parameters=algorithm_param,
-        convergence_curve=False,
-        progress_bar=False,
-    )
-    random_state = np.random.get_state()
-    try:
-        np.random.seed(RANDOM_SEED)
-        with open(os.devnull, "w", encoding="utf-8") as output_sink, redirect_stdout(output_sink):
-            model.run()
-    finally:
-        np.random.set_state(random_state)
-    _raise_if_cancelled(cancel_check)
-    elapsed = time.monotonic() - start_time
-    if model.best_variable is not None and np.isfinite(model.best_function):
-        parameters, best_fun = _polish_candidate(model.best_variable, residual, cancel_check)
-        elapsed = time.monotonic() - start_time
-        return _optimization_response(
-            parameters,
-            best_fun,
-            gamma,
-            gamma_sse,
-            eqmom_model,
-            G,
-            do,
-            e1_index,
-            dosage,
-            elapsed,
-            "Two-stage EQMOM Genetic Algorithm optimization finished.",
-            csv_data["d43"].to_numpy(dtype=float),
-            csv_data["DF"].to_numpy(dtype=float),
-            fit_indices,
-            {
-                "name": "Genetic Algorithm (GA)",
-                "max_iterations": GA_MAX_ITERATIONS,
-                "population_size": GA_POPULATION_SIZE,
-                "mutation_probability": algorithm_param["mutation_probability"],
-                "elitism_ratio": algorithm_param["elit_ratio"],
-                "crossover_probability": algorithm_param["crossover_probability"],
-                "parents_portion": algorithm_param["parents_portion"],
-                "crossover_type": algorithm_param["crossover_type"],
-                "max_iterations_without_improvement": GA_MAX_ITERATION_WITHOUT_IMPROV,
-                "deterministic_least_squares_polish": True,
-            },
-        )
-    return {"success": False, "message": "EQMOM Genetic Algorithm failed to find a finite solution."}

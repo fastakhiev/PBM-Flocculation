@@ -43,3 +43,12 @@ experimental `1.65` and records the separate model input as `dF 0;;1.79`.
 Every optimization report records the SHA-256 hashes and original filenames of
 the two uploaded CSV files. A report is only reproducible when those exact
 inputs are retained under the grant's data-management policy.
+
+The `PCC_test_N_*.csv` files were transcribed from `PCC_test_N.docx` received
+on 2026-08-24. In the scientific runner, model `DF0` defaults to
+`DF_exp(1)`. Therefore E1 6, E3 6, and E3 8 retain their second experimental
+DF measurements (`1.58`, `1.60`, and `1.59`) but use model `DF0 = 1.65`.
+E1 4 remains the documented exception with `DF0 = 1.79`. Its nearly
+degenerate `M2` was projected from `3.49534921368` to `3.49534922` (an
+absolute change of `6.32e-9`) solely to make the supplied moment vector
+numerically realizable; this correction must be disclosed with derived runs.

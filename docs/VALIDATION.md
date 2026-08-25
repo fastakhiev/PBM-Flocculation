@@ -40,7 +40,7 @@ automatically satisfiable from this repository:
 - [ ] Release-specific CycloneDX SBOM files parse successfully.
 - [ ] Packaged application embedded-server smoke test passes.
 - [ ] Windows release starts on a clean Intel Core i3 test laptop.
-- [ ] DEA and GA repeated runs produce identical results for the same seed.
+- [ ] Python multi-start repeated runs produce identical results.
 - [ ] Stop terminates active CPU work and a subsequent task can start.
 - [ ] The downloaded JSON report reproduces the displayed result.
 - [ ] Release SHA-256 values match `SHA256SUMS.txt`.
@@ -67,5 +67,27 @@ On 2026-08-10 the following checks passed on macOS with Python 3.12:
   `requirements-build.txt`;
 - `npm audit --omit=dev` reported zero known vulnerabilities.
 
-The shortened optimizer settings used for smoke testing are not scientific
-benchmarks and do not replace the Windows and MATLAB acceptance tests above.
+Those results belong to the superseded protocol 1.2. The shortened optimizer
+settings used for that smoke test are not scientific benchmarks and do not
+validate the current protocol or replace the Windows and MATLAB acceptance
+tests above.
+
+On 2026-08-25 protocol `EQMOM-PCC-2STAGE-1.5` was checked on macOS with the
+`PCC_test_N` files, `G=312 s^-1`, and `d0=100 nm`:
+
+- 28 backend tests and the TypeScript/Vite production build passed;
+- the current Python CycloneDX inventory passed `pip-audit` with no known
+  vulnerabilities, and both development SBOM files parsed successfully;
+- `E3 8 mg/g`: two consecutive runs returned exactly the same
+  `alpha_max=0.3491343`, `B=56.6803`, `gamma=0.3822215`, and
+  `SSE=100.3636` in 100.24 s and 101.87 s; Table 2 reports `0.35`, `56`,
+  `0.38`.
+- `BHMW 14 mg/g`: `alpha_max=0.3216998`, `B=50.6671`,
+  `gamma=0.2906654`, `SSE=99.7864`, 121.72 s; Table 2 reports `0.33`, `53`,
+  `0.30`.
+
+An expanded Halton screening found a lower `E3 8 mg/g` SSE at a remote
+high-`B` basin. It is deliberately not part of protocol 1.5 because the goal
+is reproduction of the supplied MATLAB local-start protocol, not an unsupported
+claim of global identifiability. This sensitivity must be disclosed when
+interpreting fitted parameters.

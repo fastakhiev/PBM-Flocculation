@@ -21,8 +21,7 @@ import json
 router = APIRouter()
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 ALGORITHMS = {
-    "Differential Evolution Algorithm (DEA)",
-    "Genetic Algorithm (GA)",
+    "Python Multi-start Least Squares (PMLS)",
 }
 
 

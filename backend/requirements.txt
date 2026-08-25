@@ -1,14 +1,9 @@
 click==8.3.3
 fastapi==0.141.1
-fonttools==4.60.2
-func_timeout==4.3.5
-geneticalgorithm==1.0.2
 idna==3.18
-matplotlib==3.10.7
 numpy==2.2.6
 packaging==25.0
 pandas==2.3.1
-pillow==12.3.0
 pydantic==2.13.4
 python-multipart==0.0.32
 pywebview==5.4

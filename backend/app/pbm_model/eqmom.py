@@ -547,6 +547,7 @@ def _advance_adaptive(
     remaining = config.dt_seconds
     step_size = config.dt_seconds
     attempts = 0
+    derivative = None
 
     while remaining > 10.0 * np.finfo(float).eps * config.dt_seconds:
         if config.cancel_check is not None and config.cancel_check():
@@ -555,11 +556,13 @@ def _advance_adaptive(
         if attempts > config.maximum_substeps:
             raise EQMOMError("Maximum adaptive substep count was exceeded.")
         step_size = min(step_size, remaining)
-        derivative = _moment_derivative(moments, df, alpha_max, binding, config)
+        if derivative is None:
+            derivative = _moment_derivative(moments, df, alpha_max, binding, config)
         candidate = moments + step_size * derivative
         if _valid_moment_state(candidate, config):
             moments = candidate
             remaining -= step_size
+            derivative = None
             if remaining > 0:
                 step_size = min(2.0 * step_size, remaining)
             continue

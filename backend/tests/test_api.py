@@ -44,7 +44,7 @@ class APITests(unittest.TestCase):
             "gof": 98.2,
             "optimization_time": 1.2,
             "moments": [1, 1.0439, 1.3993, 2.4084, 5.3226],
-            "algorithm": {"name": "Differential Evolution Algorithm (DEA)"},
+            "algorithm": {"name": "Python Multi-start Least Squares (PMLS)"},
             "provenance": {
                 "software_version": "test",
                 "protocol_version": "EQMOM-PCC-2STAGE-1.0",
@@ -70,7 +70,7 @@ class APITests(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
 
     def test_upload_rejects_non_csv_extension(self):
-        form_values = ["312", "100", "BHMW", "Differential Evolution Algorithm (DEA)", "14"]
+        form_values = ["312", "100", "BHMW", "Python Multi-start Least Squares (PMLS)", "14"]
         multipart = [("data", (None, value)) for value in form_values]
         multipart.extend(
             [
@@ -83,7 +83,7 @@ class APITests(unittest.TestCase):
         self.assertIn(".csv", response.json()["detail"])
 
     def test_optimization_rejects_extra_form_value(self):
-        form_values = ["312", "100", "BHMW", "Differential Evolution Algorithm (DEA)", "14", "1.65"]
+        form_values = ["312", "100", "BHMW", "Python Multi-start Least Squares (PMLS)", "14", "1.65"]
         multipart = [("data", (None, value)) for value in form_values]
         multipart.extend(
             [

@@ -1,10 +1,13 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
 from app.pbm_model.eqmom import (
     EQMOMCancelled,
     EQMOMConfig,
+    _advance_adaptive,
     _two_node_lognormal,
     fit_gamma,
     moments_from_distribution,
@@ -29,6 +32,29 @@ DF_BHMW_14 = np.array(
 
 
 class EQMOMTests(unittest.TestCase):
+    def test_adaptive_halving_reuses_derivative_until_a_step_is_accepted(self):
+        config = SimpleNamespace(
+            dt_seconds=1.0,
+            maximum_substeps=10,
+            minimum_substep_seconds=1.0 / 1024.0,
+            cancel_check=None,
+        )
+
+        with (
+            patch(
+                "app.pbm_model.eqmom._moment_derivative",
+                return_value=np.ones(5),
+            ) as derivative_mock,
+            patch(
+                "app.pbm_model.eqmom._valid_moment_state",
+                side_effect=[False, True, True],
+            ),
+        ):
+            result = _advance_adaptive(np.ones(5), 2.0, 0.3, 50.0, config)
+
+        np.testing.assert_allclose(result, np.full(5, 2.0))
+        self.assertEqual(derivative_mock.call_count, 2)
+
     def test_e1_8_gamma_uses_the_documented_df_max(self):
         time = np.array([0, 0.5, 1.4, 2.3, 3.3, 4.2, 5.1, 6.0, 6.9, 7.8, 8.8, 9.7, 10.6, 11.5, 12.4, 13.3])
         df = np.array([1.6, 1.85, 2.13, 2.22, 2.3, 2.34, 2.36, 2.38, 2.4, 2.4, 2.41, 2.42, 2.42, 2.41, 2.41, 2.41])

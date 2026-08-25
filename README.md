@@ -11,6 +11,10 @@ The application performs a documented two-stage calibration:
 2. With `gamma` fixed, `alpha_max` and `B` are fitted to all `d43`
    measurements after time zero.
 
+Stage 2 uses deterministic bounded multi-start least squares implemented with
+SciPy. It refines every start from the supplied scientific runner and does not
+require MATLAB or a MATLAB license.
+
 There are no material-specific parameter values, shear-rate substitutions,
 or hidden fitting windows in the optimizer. Published Table 2 values are
 displayed only as a labelled external reference and are not imported by the
@@ -18,7 +22,7 @@ optimization module.
 
 ## Scientific Status
 
-Protocol version: `EQMOM-PCC-2STAGE-1.2`.
+Protocol version: `EQMOM-PCC-2STAGE-1.5`.
 
 The Python implementation follows the supplied general PCC MATLAB code. It
 has not yet been independently certified as numerically equivalent to the
@@ -116,7 +120,7 @@ Development CycloneDX snapshots are stored in `docs/`. The Windows build script
 generates release-specific SBOM files from its own clean platform environment.
 
 The reproducibility report downloaded from the Simulation page records input
-SHA-256 hashes, software/protocol versions, seed, parameter bounds, optimizer
+SHA-256 hashes, software/protocol versions, parameter bounds, optimizer
 settings, complete fit metrics, trajectories, and diagnostics.
 
 ## Docker
