@@ -18,10 +18,8 @@ The protocol identifier is `EQMOM-PCC-2STAGE-1.2`.
    the experimental CSV `dF 0` metadata row and is independent from the first
    experimental DF value.
 3. The estimated `gamma` is fixed.
-4. `alpha_max` and `B` are estimated over all subsequent `d43` measurements.
-   The MATLAB-compatible mode uses the supplied runner's bounded multi-start
-   least-squares points and limits. DEA and GA remain available as global
-   alternatives followed by deterministic bounded least-squares polishing.
+4. `alpha_max` and `B` are estimated by DEA or GA over all subsequent `d43`
+   measurements, followed by deterministic bounded least-squares polishing.
 5. Selection is based on the lowest valid Stage 2 SSE. GOF is reported as a
    diagnostic and is not used as a stopping target or selection criterion.
 
@@ -36,7 +34,7 @@ report. No branch depends on C-PAM name or dosage.
 | Two-node log-normal inversion | `eqmom._two_node_lognormal` | `computeLogNormalNew.m` |
 | Secondary Gauss-Wigert quadrature | `eqmom._gauss_wigert` | `computeGaussWigert.m` |
 | Aggregation and breakup sources | `eqmom._moment_derivative` | `momentDerivative` in `fit_EQMOM_general_PCC.m` |
-| Stage 2 objective and MATLAB starts | `optimization._stage_two_functions`, `optimization.run_optimization_matlab` | `trackedResidual`, `startPoints` |
+| Stage 2 objective | `optimization._stage_two_functions` | `trackedResidual` |
 | Fit diagnostics | `pbm_model/metrics.py` | `evaluateCandidate` |
 
 ## Inputs And Units

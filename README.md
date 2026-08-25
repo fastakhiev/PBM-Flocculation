@@ -11,10 +11,6 @@ The application performs a documented two-stage calibration:
 2. With `gamma` fixed, `alpha_max` and `B` are fitted to all `d43`
    measurements after time zero.
 
-The default Stage 2 solver reproduces the bounded multi-start least-squares
-protocol in the supplied MATLAB runner. DEA and GA are retained as global
-search alternatives and can converge to a different, lower-SSE parameter basin.
-
 There are no material-specific parameter values, shear-rate substitutions,
 or hidden fitting windows in the optimizer. Published Table 2 values are
 displayed only as a labelled external reference and are not imported by the
