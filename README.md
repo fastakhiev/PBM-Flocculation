@@ -12,8 +12,9 @@ The application performs a documented two-stage calibration:
    measurements after time zero.
 
 Stage 2 uses deterministic bounded multi-start least squares implemented with
-SciPy. It refines every start from the supplied scientific runner and does not
-require MATLAB or a MATLAB license.
+SciPy. It screens every start from the supplied scientific runner, refines the
+two lowest-SSE distinct valid start points, and does not require MATLAB or a
+MATLAB license.
 
 There are no material-specific parameter values, shear-rate substitutions,
 or hidden fitting windows in the optimizer. Published Table 2 values are
@@ -22,7 +23,7 @@ optimization module.
 
 ## Scientific Status
 
-Protocol version: `EQMOM-PCC-2STAGE-1.6`.
+Protocol version: `EQMOM-PCC-2STAGE-1.7`.
 
 The Python implementation follows the supplied general PCC MATLAB code. It
 has not yet been independently certified as numerically equivalent to the

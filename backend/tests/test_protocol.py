@@ -29,7 +29,7 @@ class ProtocolTests(unittest.TestCase):
             np.array([1, 0.57, 0.82, 1.8, 7]),
             2.19,
         )
-        self.assertEqual(PROTOCOL_VERSION, "EQMOM-PCC-2STAGE-1.6")
+        self.assertEqual(PROTOCOL_VERSION, "EQMOM-PCC-2STAGE-1.7")
         self.assertEqual(model.shear_rate, 700)
         np.testing.assert_array_equal(fit_indices, [1, 2, 3])
 
@@ -67,8 +67,11 @@ class ProtocolTests(unittest.TestCase):
         np.testing.assert_allclose(parameters, [0.35, 56.0], rtol=0.0, atol=1e-6)
         self.assertLess(error, 1e-12)
 
-    def test_python_multistart_refines_every_supplied_start(self):
+    def test_python_multistart_screens_every_start_and_refines_two_basins(self):
+        evaluated = []
+
         def residual(parameters):
+            evaluated.append(tuple(parameters))
             residual.last_valid = True
             return np.asarray(parameters, dtype=float)
 
@@ -81,9 +84,27 @@ class ProtocolTests(unittest.TestCase):
         ):
             _run_multistart_least_squares(residual)
 
-        self.assertEqual(solver.call_count, len(starts))
-        for call, start in zip(solver.call_args_list, starts, strict=True):
+        self.assertEqual(evaluated, list(starts))
+        self.assertEqual(solver.call_count, 2)
+        for call, start in zip(solver.call_args_list, starts[:2], strict=True):
             np.testing.assert_allclose(call.args[1], start)
+
+    def test_python_multistart_does_not_refine_invalid_screening_points(self):
+        def residual(parameters):
+            residual.last_valid = parameters[0] < 0.5
+            return np.asarray(parameters, dtype=float)
+
+        residual.invalid_sse = 1e6
+        residual.last_valid = False
+        starts = ((0.1, 20.0), (0.8, 200.0))
+        with (
+            patch("app.pbm_model.optimization.MULTISTART_POINTS", starts),
+            patch("app.pbm_model.optimization.least_squares") as solver,
+        ):
+            _run_multistart_least_squares(residual)
+
+        self.assertEqual(solver.call_count, 1)
+        np.testing.assert_allclose(solver.call_args.args[1], starts[0])
 
     def test_invalid_residual_preserves_matlab_search_direction(self):
         context = SimpleNamespace(gamma=0.4, model=object())

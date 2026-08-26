@@ -9,7 +9,7 @@ implementation reference is the supplied `matlab_code/fit_EQMOM_general_PCC.m`.
 
 ## Calibration Protocol
 
-The protocol identifier is `EQMOM-PCC-2STAGE-1.6`.
+The protocol identifier is `EQMOM-PCC-2STAGE-1.7`.
 
 1. Measurement time must start at zero. The initial point is excluded from
    fitting because the model initial condition is supplied independently.
@@ -18,9 +18,11 @@ The protocol identifier is `EQMOM-PCC-2STAGE-1.6`.
    the experimental CSV `dF 0` metadata row and is independent from the first
    experimental DF value.
 3. The estimated `gamma` is fixed.
-4. Every start point from the supplied MATLAB runner is refined independently
+4. Every start point from the supplied MATLAB runner is screened. Invalid
+   trajectories are discarded, then the two lowest-SSE valid starts separated
+   by at least `0.04` in normalized parameter space are refined independently
    by bounded trust-region least squares using forward finite differences.
-   Invalid trajectories are assigned the same directional finite residual as
+   Invalid trial trajectories receive the same directional finite residual as
    the runner. The solver is deterministic and implemented in SciPy; MATLAB is
    not required at runtime.
 5. Selection is based on the lowest valid Stage 2 SSE. GOF is reported as a

@@ -8,6 +8,6 @@ model study." *Chemical Engineering Journal* 536 (2026), 175911.
 https://doi.org/10.1016/j.cej.2026.175911
 
 Also identify the software as `PBM Flocculation`, include its release version,
-Git commit SHA, protocol version `EQMOM-PCC-2STAGE-1.6`, and attach the generated
+Git commit SHA, protocol version `EQMOM-PCC-2STAGE-1.7`, and attach the generated
 optimization JSON report. Software authorship must be confirmed by the project
 owner before assigning author names in a grant submission.

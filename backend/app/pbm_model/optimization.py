@@ -19,6 +19,8 @@ MULTISTART_MAX_EVALUATIONS = 3000
 MULTISTART_FUNCTION_TOLERANCE = 1e-9
 MULTISTART_STEP_TOLERANCE = 1e-9
 MULTISTART_OPTIMALITY_TOLERANCE = 1e-8
+MULTISTART_LOCAL_STARTS = 2
+MULTISTART_MINIMUM_SEPARATION = 0.04
 MULTISTART_POINTS = (
     (0.10, 20.0),
     (0.15, 30.0),
@@ -44,7 +46,7 @@ MULTISTART_POINTS = (
 
 ALPHA_BOUNDS = (1e-6, 1.0)
 B_BOUNDS = (1e-8, 360.0)
-PROTOCOL_VERSION = "EQMOM-PCC-2STAGE-1.6"
+PROTOCOL_VERSION = "EQMOM-PCC-2STAGE-1.7"
 
 
 class OptimizationCancelled(RuntimeError):
@@ -188,9 +190,31 @@ def _run_multistart_least_squares(residual, cancel_check=None):
             best_error = error
         return values
 
+    valid_starts = []
     for raw_start in MULTISTART_POINTS:
         _raise_if_cancelled(cancel_check)
         start = np.clip(np.asarray(raw_start, dtype=float), lower, upper)
+        values = tracked_residual(start)
+        error = float(values @ values)
+        if is_valid(error):
+            valid_starts.append((error, start.copy()))
+
+    selected_starts = []
+    span = upper - lower
+    for _error, start in sorted(valid_starts, key=lambda candidate: candidate[0]):
+        normalized = (start - lower) / span
+        if any(
+            np.linalg.norm(normalized - (selected - lower) / span)
+            < MULTISTART_MINIMUM_SEPARATION
+            for selected in selected_starts
+        ):
+            continue
+        selected_starts.append(start)
+        if len(selected_starts) == MULTISTART_LOCAL_STARTS:
+            break
+
+    for start in selected_starts:
+        _raise_if_cancelled(cancel_check)
         try:
             least_squares(
                 tracked_residual,
@@ -351,9 +375,13 @@ def run_optimization(
                 "solver": "scipy.optimize.least_squares",
                 "method": "trust-region reflective",
                 "finite_difference": "forward two-point",
-                "supplied_start_points": [list(value) for value in MULTISTART_POINTS],
-                "local_start_count": len(MULTISTART_POINTS),
-                "invalid_starts_receive_finite_directional_residual": True,
+                "screening": {
+                    "supplied_start_points": [list(value) for value in MULTISTART_POINTS],
+                    "local_start_count": MULTISTART_LOCAL_STARTS,
+                    "minimum_normalized_separation": MULTISTART_MINIMUM_SEPARATION,
+                    "invalid_screening_points_skipped": True,
+                },
+                "invalid_trials_receive_finite_directional_residual": True,
                 "function_tolerance": MULTISTART_FUNCTION_TOLERANCE,
                 "step_tolerance": MULTISTART_STEP_TOLERANCE,
                 "optimality_tolerance": MULTISTART_OPTIMALITY_TOLERANCE,
