@@ -27,6 +27,7 @@ class APITests(unittest.TestCase):
         response = self.client.get("/openapi.json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["info"]["title"], "PBM Flocculation")
+        self.assertEqual(response.json()["info"]["version"], "1.0.0-rc2")
         self.assertIn("/api/optimization_report", response.json()["paths"])
 
     def test_saved_result_has_downloadable_audit_report(self):

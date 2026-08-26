@@ -75,7 +75,7 @@ tests above.
 On 2026-08-26 protocol `EQMOM-PCC-2STAGE-1.7` was checked on macOS with the
 `PCC_test_N` files, `G=312 s^-1`, and `d0=100 nm`:
 
-- 30 backend tests and the TypeScript/Vite production build passed;
+- 31 backend tests and the TypeScript/Vite production build passed;
 - the current Python CycloneDX inventory passed `pip-audit` with no known
   vulnerabilities, and both development SBOM files parsed successfully;
 - `E3 8 mg/g`: `alpha_max=0.3491340`, `B=56.6807`,

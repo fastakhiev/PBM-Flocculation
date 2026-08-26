@@ -9,6 +9,10 @@ import standalone
 
 
 class StartupTests(unittest.TestCase):
+    def test_desktop_title_identifies_the_release_and_protocol(self):
+        self.assertEqual(standalone.APP_VERSION, "1.0.0-rc2")
+        self.assertEqual(standalone.PROTOCOL_VERSION, "EQMOM-PCC-2STAGE-1.7")
+
     def test_api_import_does_not_eagerly_load_numerical_stack(self):
         command = (
             "import sys; import app.main; "

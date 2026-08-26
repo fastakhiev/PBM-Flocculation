@@ -5,6 +5,7 @@ from typing import Callable
 import numpy as np
 from scipy.optimize import least_squares
 
+from app.protocol import PROTOCOL_VERSION
 from app.pbm_model.eqmom import (
     EQMOMConfig,
     EQMOMError,
@@ -46,7 +47,6 @@ MULTISTART_POINTS = (
 
 ALPHA_BOUNDS = (1e-6, 1.0)
 B_BOUNDS = (1e-8, 360.0)
-PROTOCOL_VERSION = "EQMOM-PCC-2STAGE-1.7"
 
 
 class OptimizationCancelled(RuntimeError):

@@ -12,6 +12,9 @@ from urllib.request import urlopen
 import uvicorn
 import webview
 
+from app.protocol import PROTOCOL_VERSION
+from app.version import APP_NAME, APP_VERSION
+
 
 _LOADING_HTML = """<!doctype html>
 <html lang="en">
@@ -149,7 +152,13 @@ def main() -> None:
     health_url = f"{url}openapi.json"
     server_failed = threading.Event()
 
-    logging.info("Starting PBM Flocculation at %s", url)
+    logging.info(
+        "Starting %s %s with protocol %s at %s",
+        APP_NAME,
+        APP_VERSION,
+        PROTOCOL_VERSION,
+        url,
+    )
     threading.Thread(target=_run_server, args=(host, port, server_failed), daemon=True).start()
 
     if os.getenv("PBM_SMOKE_TEST", "").lower() in {"1", "true", "yes"}:
@@ -159,7 +168,7 @@ def main() -> None:
         return
 
     window_options = {
-        "title": "PBM Flocculation",
+        "title": f"{APP_NAME} {APP_VERSION} | {PROTOCOL_VERSION}",
         "width": 1280,
         "height": 820,
         "min_size": (1024, 700),
