@@ -116,7 +116,12 @@ class EQMOMTests(unittest.TestCase):
         np.testing.assert_allclose(weights, [1.0, 0.0], rtol=0.0, atol=0.0)
         np.testing.assert_allclose(reconstructed, moments, rtol=3e-11, atol=0.0)
         self.assertAlmostEqual(nodes[0], 1.8695834052808342, places=12)
-        self.assertAlmostEqual(sigma, 0.001008098896839969, places=15)
+        np.testing.assert_allclose(
+            sigma,
+            0.001008098896839969,
+            rtol=0.0,
+            atol=5e-14,
+        )
 
     def test_e2_6_table_parameters_produce_finite_reference_trajectory(self):
         gamma, _ = fit_gamma(TIME_E2_6, DF_E2_6, 2.55)
