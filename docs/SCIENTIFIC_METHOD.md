@@ -9,7 +9,7 @@ implementation reference is the supplied `matlab_code/fit_EQMOM_general_PCC.m`.
 
 ## Calibration Protocol
 
-The protocol identifier is `EQMOM-PCC-2STAGE-1.7`.
+The protocol identifier is `EQMOM-PCC-2STAGE-1.8`.
 
 1. Measurement time must start at zero. The initial point is excluded from
    fitting because the model initial condition is supplied independently.
@@ -52,14 +52,15 @@ depends on C-PAM name or dosage.
 | Primary diameter `d0` | nm in UI; converted to m inside the kernel |
 | `gamma` | min^-1 |
 | Model `DF0` | dimensionless; required `dF 0` metadata row in the experimental CSV |
-| Initial moments | source normalization; `M4/M3` must match the experimental `d43` unit |
+| Initial moments | source normalization, optionally converted by an explicit `length_scale` in the moments CSV |
 
 The current source data contain different apparent moment normalizations. The
-software therefore does not silently rescale moments. It records the modeled
-and experimental initial `d43` difference in the optimization audit. It also
-records when measured DF values exceed the supplied limiting `DF_max`. Such a
-diagnostic requires data-owner review before the run can support a scientific
-claim.
+software therefore does not infer or silently apply a scale. When a moments
+CSV explicitly supplies `length_scale`, order `k` is converted as
+`M_k = raw_M_k * length_scale^k`. The report records the raw moments, scale,
+formula, and model moments. The audit also records the modeled and experimental
+initial `d43` difference and when measured DF values exceed the supplied
+limiting `DF_max`.
 
 ## Numerical Method
 

@@ -80,18 +80,18 @@ def _read_experimental_csv(csv_text: str) -> tuple[pd.DataFrame, float, float]:
     return measurements, df_max, df0
 
 
-def _read_initial_moments(csv_text: str) -> np.ndarray:
+def _read_initial_moment_data(csv_text: str) -> tuple[np.ndarray, np.ndarray, float]:
     data = pd.read_csv(StringIO(csv_text), sep=";", engine="python")
     moment_columns = [f"M{index}" for index in range(5)]
     if all(column in data.columns for column in moment_columns):
-        moments = np.array(
+        raw_moments = np.array(
             [float(str(data.loc[data.index[0], column]).replace(",", ".")) for column in moment_columns]
         )
     elif "value" in data.columns:
-        moments = pd.to_numeric(
+        raw_moments = pd.to_numeric(
             data["value"].astype(str).str.replace(",", "."), errors="coerce"
         ).dropna().to_numpy(dtype=float)
-        if moments.size != 5:
+        if raw_moments.size != 5:
             raise ValueError("The value column must contain exactly five rows: M0, M1, M2, M3, M4.")
     elif "initial_distribution" in data.columns:
         raise ValueError(
@@ -102,8 +102,29 @@ def _read_initial_moments(csv_text: str) -> np.ndarray:
         raise ValueError(
             "Initial CSV must contain either a value column with five rows or the five columns M0, M1, M2, M3, M4."
         )
-    if moments.shape != (5,) or np.any(~np.isfinite(moments)) or np.any(moments <= 0):
+    if raw_moments.shape != (5,) or np.any(~np.isfinite(raw_moments)) or np.any(raw_moments <= 0):
         raise ValueError("Initial EQMOM moments must be five positive finite values.")
+
+    length_scale = 1.0
+    if "length_scale" in data.columns:
+        scale_values = pd.to_numeric(
+            data["length_scale"].astype(str).str.replace(",", "."),
+            errors="coerce",
+        ).dropna().to_numpy(dtype=float)
+        if scale_values.size != 1:
+            raise ValueError("The length_scale column must contain exactly one numeric value.")
+        length_scale = float(scale_values[0])
+        if not np.isfinite(length_scale) or length_scale <= 0:
+            raise ValueError("Moment length_scale must be a positive finite value.")
+
+    moments = raw_moments * length_scale ** np.arange(5, dtype=float)
+    if np.any(~np.isfinite(moments)) or np.any(moments <= 0):
+        raise ValueError("Scaled EQMOM moments must be positive finite values.")
+    return moments, raw_moments, length_scale
+
+
+def _read_initial_moments(csv_text: str) -> np.ndarray:
+    moments, _raw_moments, _length_scale = _read_initial_moment_data(csv_text)
     return moments
 
 
@@ -128,7 +149,7 @@ def _optimization_task_impl(
         csv_data_exp, df_max, DF0_val = _read_experimental_csv(csv_str_exp)
         G_val = float(g)
         do_val = float(do)
-        moments = _read_initial_moments(csv_str_init)
+        moments, raw_moments, moment_length_scale = _read_initial_moment_data(csv_str_init)
 
         if not np.isfinite(G_val) or G_val <= 0 or not np.isfinite(do_val) or do_val <= 0:
             raise ValueError("Shear rate and primary particle diameter must be positive finite values.")
@@ -152,6 +173,12 @@ def _optimization_task_impl(
             "moments_file": moments_filename,
             "experimental_sha256": _sha256_text(csv_str_exp),
             "moments_sha256": _sha256_text(csv_str_init),
+            "moment_preprocessing": {
+                "raw_moments": raw_moments.tolist(),
+                "length_scale": moment_length_scale,
+                "transformation": "M_k = raw_M_k * length_scale^k",
+                "model_moments": moments.tolist(),
+            },
             "runtime": {
                 "python": platform.python_version(),
                 "operating_system": platform.platform(),

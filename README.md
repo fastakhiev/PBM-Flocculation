@@ -23,7 +23,7 @@ optimization module.
 
 ## Scientific Status
 
-Protocol version: `EQMOM-PCC-2STAGE-1.7`.
+Protocol version: `EQMOM-PCC-2STAGE-1.8`.
 
 The Python implementation follows the supplied general PCC MATLAB code. It
 has not yet been independently certified as numerically equivalent to the
@@ -78,6 +78,20 @@ value
 0.82
 1.8
 7
+```
+
+If the supplied moments use a normalized length coordinate, the file may
+contain one explicit `length_scale`. The model then applies the unit conversion
+`M_k = raw_M_k * length_scale^k`; the raw values, scale, formula, and converted
+moments are retained in the optimization JSON report:
+
+```csv
+value;length_scale
+1;1.447615212520629
+1.88585443160415;
+3.5564506000753;
+6.7069619411825;
+12.6483929852784;
 ```
 
 ## Local Development

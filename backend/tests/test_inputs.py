@@ -55,6 +55,17 @@ class InputValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "positive"):
             _read_initial_moments("value\n1\n2\n3\n4\n-5\n")
 
+    def test_moment_length_scale_is_applied_by_order(self):
+        moments = _read_initial_moments(
+            "value;length_scale\n1;2\n2;\n3;\n4;\n5;\n"
+        )
+        np.testing.assert_allclose(moments, [1, 4, 12, 32, 80])
+
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            _read_initial_moments(
+                "value;length_scale\n1;2\n2;3\n3;\n4;\n5;\n"
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

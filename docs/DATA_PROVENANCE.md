@@ -39,6 +39,20 @@ For E1 4 mg/g, the data owner clarified on 2026-08-13 that the experimental
 series still begins with `DF_exp(1) = 1.65`, while the source Excel model input
 was separately set to `DF0 = 1.79`; `DF_max = 2.39`. The CSV retains the
 experimental `1.65` and records the separate model input as `dF 0;;1.79`.
+On 2026-08-30 the data owner supplied corrected moments
+`[1; 1.88585443160415; 3.5564506000753; 6.7069619411825;
+12.6483929852784]`; the `PCC_test_N_E1_4mg_moments.csv` file retains those
+values without decimal truncation. On 2026-08-31 an explicit
+`length_scale = 1.447615212520629` was added to convert the normalized length
+coordinate so that the model initial `M4/M3` equals the supplied experimental
+initial `d43 = 2.73`. The scale is derived as
+`2.73 / (12.6483929852784 / 6.7069619411825)`; it is preprocessing metadata,
+not a fitted parameter or a value supplied by the data owner.
+
+For E1+ 12 mg/g, the data owner supplied a corrected 17-point `d43` series and
+full-precision moments on 2026-08-30. The DF series, `DF0 = 1.65`, and
+`DF_max = 2.56` were unchanged. The corresponding `PCC_test_N` files retain
+the supplied values without additional normalization.
 
 Every optimization report records the SHA-256 hashes and original filenames of
 the two uploaded CSV files. A report is only reproducible when those exact
@@ -49,8 +63,5 @@ on 2026-08-24. In the scientific runner, model `DF0` defaults to
 `DF_exp(1)`. Therefore E1 6, E3 6, and E3 8 retain their second experimental
 DF measurements (`1.58`, `1.60`, and `1.59`) but use model `DF0 = 1.65`.
 E1 4 remains the documented exception with `DF0 = 1.79`. Its nearly
-degenerate moments are retained verbatim. Because decimal rounding makes the
-final canonical coordinate slightly negative, the numerical inversion uses
-the one-node log-normal boundary that reconstructs all five supplied moments
-with maximum relative log error below `2.4e-11`; the uploaded values themselves
-are not changed.
+degenerate moments were superseded by the corrected full-precision moments
+received on 2026-08-30.
