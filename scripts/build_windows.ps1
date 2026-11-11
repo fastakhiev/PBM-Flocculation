@@ -1,3 +1,7 @@
+param(
+    [string]$PythonPath
+)
+
 $ErrorActionPreference = "Stop"
 
 function Assert-NativeSuccess([string]$Step) {
@@ -11,13 +15,59 @@ $Frontend = Join-Path $Root "pbm_model_interface"
 $Backend = Join-Path $Root "backend"
 $Release = Join-Path $Root "release\PBM-Flocculation"
 $BuildVenv = Join-Path $Backend ".venv-release"
-$PythonSelector = "-3.12"
 
-$PythonInfoJson = py $PythonSelector -c "import json, os, platform, struct, sys; print(json.dumps({'compatible': sys.version_info[:2] == (3, 12) and platform.python_implementation() == 'CPython' and struct.calcsize('P') == 8, 'version': platform.python_version(), 'executable': sys.executable, 'base_prefix': sys.base_prefix, 'is_conda': os.path.isdir(os.path.join(sys.base_prefix, 'conda-meta'))}))"
-Assert-NativeSuccess "Python environment inspection"
-$PythonInfo = $PythonInfoJson | ConvertFrom-Json
-if (-not $PythonInfo.compatible) {
-    throw "64-bit CPython 3.12 is required for a reproducible Windows release."
+function Get-CompatiblePython([string]$Command, [string[]]$PrefixArguments = @()) {
+    # A failed launcher probe must not prevent trying PATH or an active Conda env.
+    $ErrorActionPreference = "Continue"
+    $Probe = "import json, os, platform, struct, sys; print(json.dumps({'compatible': sys.version_info[:2] == (3, 14) and platform.python_implementation() == 'CPython' and struct.calcsize('P') == 8, 'version': platform.python_version(), 'executable': sys.executable, 'base_prefix': sys.base_prefix, 'is_conda': os.path.isdir(os.path.join(sys.base_prefix, 'conda-meta'))}))"
+    try {
+        $InfoJson = & $Command @PrefixArguments -c $Probe 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            return $null
+        }
+        $Info = ($InfoJson -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
+        if ($Info.compatible) {
+            return $Info
+        }
+    }
+    catch {
+        return $null
+    }
+    return $null
+}
+
+$PythonInfo = $null
+if ($PythonPath) {
+    $PythonInfo = Get-CompatiblePython $PythonPath
+    if (-not $PythonInfo) {
+        throw "The specified -PythonPath '$PythonPath' could not run as 64-bit CPython 3.14. Supply the path to a working Python 3.14 python.exe."
+    }
+}
+else {
+    $Launcher = Get-Command py.exe -CommandType Application -ErrorAction SilentlyContinue
+    if ($Launcher) {
+        $PythonInfo = Get-CompatiblePython $Launcher.Source @("-3.14")
+    }
+    if (-not $PythonInfo) {
+        $Candidates = @()
+        if ($env:CONDA_PREFIX) {
+            $Candidates += Join-Path $env:CONDA_PREFIX "python.exe"
+        }
+        $Candidates += @(Get-Command python.exe -All -CommandType Application -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+        foreach ($Candidate in ($Candidates | Select-Object -Unique)) {
+            $PythonInfo = Get-CompatiblePython $Candidate
+            if ($PythonInfo) { break }
+        }
+    }
+    if (-not $PythonInfo) {
+        throw @"
+64-bit CPython 3.14 was not found via 'py -3.14', active Conda environment, or PATH.
+The Windows launcher exit code 103 means the requested Python version could not be located.
+Install 64-bit Python 3.14 from python.org, or activate a Conda environment with Python 3.14.
+Then rerun this script. To select an existing installation explicitly, use:
+  .\scripts\build_windows.ps1 -PythonPath 'C:\path\to\Python314\python.exe'
+"@
+    }
 }
 Write-Host "Source Python: $($PythonInfo.version) ($($PythonInfo.executable))"
 
@@ -55,7 +105,7 @@ if ($PythonInfo.is_conda) {
         }
         $CondaExe = $CondaCommand.Source
     }
-    & $CondaExe create --prefix $BuildVenv --yes --quiet python=3.12 pip
+    & $CondaExe create --prefix $BuildVenv --yes --quiet python=3.14 pip
     Assert-NativeSuccess "Conda release environment creation"
     $BuildPython = Join-Path $BuildVenv "python.exe"
     $env:CONDA_PREFIX = $BuildVenv

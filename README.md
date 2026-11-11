@@ -96,15 +96,29 @@ value;length_scale
 
 ## Local Development
 
-Prerequisites: Python 3.10.1 or newer, Node.js 20, and npm.
+Prerequisites: 64-bit CPython 3.14, Node.js 20, and npm.
 
 ```bash
 cd backend
-python -m venv .venv
+python3.14 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python cli.py api --host 127.0.0.1 --port 8000
 ```
+
+For local API development on Windows, use PowerShell:
+
+```powershell
+cd backend
+py -3.14 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe cli.py api --host 127.0.0.1 --port 8000
+```
+
+Recreate an existing virtual environment if it was created with an older
+Python version. The pinned numerical stack is NumPy 2.3.5, SciPy 1.16.3, and
+pandas 2.3.3, which provide Python 3.14 wheels. Windows also pins the Python.NET
+bridge used by the desktop window to a Python 3.14 compatible release.
 
 In another terminal:
 
@@ -151,12 +165,25 @@ volume. PostgreSQL, Redis, and Celery are not required.
 
 ## Windows Release
 
-Run from PowerShell on Windows with 64-bit CPython 3.12 (python.org or
+Run from PowerShell on Windows with 64-bit CPython 3.14 (python.org or
 Anaconda), Node.js 20, and npm installed:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 ```
+
+The script looks for 64-bit CPython 3.14 through `py -3.14`, the active Conda
+environment, and `python.exe` on PATH. To select an installation explicitly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 -PythonPath "C:\path\to\Python314\python.exe"
+```
+
+If the launcher reports exit code **103**, it cannot locate Python 3.14.
+Check registered installations with `py -0p`. Install 64-bit Python 3.14 from
+python.org, or activate a Conda environment containing Python 3.14, then retry.
+An installation of another Python minor version does not satisfy the release
+build requirement.
 
 The release is written to `release\PBM-Flocculation`. It is intentionally a
 one-directory package to avoid unpacking the scientific Python stack on every

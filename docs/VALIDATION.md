@@ -34,7 +34,7 @@ automatically satisfiable from this repository:
 
 ## Release Acceptance
 
-- [ ] Backend tests pass from the clean 64-bit CPython 3.12 release environment.
+- [ ] Backend tests pass from the clean 64-bit CPython 3.14 release environment.
 - [ ] Frontend production build passes after `npm ci`.
 - [ ] Python and npm dependency audits report no known high-severity issue.
 - [ ] Release-specific CycloneDX SBOM files parse successfully.
@@ -51,6 +51,28 @@ Unchecked items must be disclosed as limitations in a submission. They must not
 be represented as completed validation.
 
 ## Development Verification Log
+
+On 2026-11-11 the Python 3.14 migration was checked in a clean macOS virtual
+environment with CPython 3.14.7, NumPy 2.3.5, SciPy 1.16.3, and pandas 2.3.3:
+
+- installation of `backend/requirements-audit.txt` completed successfully;
+- `python -m pip check` reported no broken requirements;
+- `python -m unittest discover -s tests -v` passed all 32 backend tests,
+  including reference trajectories, least squares, API, and startup checks;
+- the source desktop entry point passed its `PBM_SMOKE_TEST=1` embedded-server
+  check using a temporary database and log;
+- `python -m pip_audit --requirement backend/requirements-build.txt` reported
+  no known vulnerabilities on macOS;
+- binary wheels were downloaded for Windows x64 / CPython 3.14 for NumPy,
+  SciPy, pandas, Pydantic Core, PyInstaller, and Python.NET 3.2.1 (including
+  its CFFI dependency).
+
+Python 3.14 emitted `ResourceWarning` messages about unclosed SQLite
+connections during the passing tests. The Windows-only Python.NET pin was
+checked for wheel availability, but was not loaded or audited on macOS.
+PowerShell, a Windows `.exe` build, the desktop window on Windows, and the
+Docker image were not exercised. The Windows release acceptance items above
+remain open. These checks do not establish new MATLAB equivalence results.
 
 On 2026-08-10 the following checks passed on macOS with Python 3.12:
 
