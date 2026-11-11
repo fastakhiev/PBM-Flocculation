@@ -440,7 +440,6 @@ function sanitizePositive2(e: Event) {
             type="file" 
             @change="handleFileUploadInit" 
             accept=".csv" 
-            required 
           />
 
 
@@ -476,7 +475,6 @@ function sanitizePositive2(e: Event) {
             type="file" 
             @change="handleFileUploadExp" 
             accept=".csv" 
-            required 
           />
 
 
