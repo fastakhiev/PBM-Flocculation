@@ -1,5 +1,6 @@
 param(
-    [string]$PythonPath
+    [string]$PythonPath,
+    [switch]$FullChecks
 )
 
 $ErrorActionPreference = "Stop"
@@ -70,6 +71,12 @@ Then rerun this script. To select an existing installation explicitly, use:
     }
 }
 Write-Host "Source Python: $($PythonInfo.version) ($($PythonInfo.executable))"
+if ($FullChecks) {
+    Write-Host "Build mode: full checks (dependency audits, backend tests, SBOMs)"
+}
+else {
+    Write-Host "Build mode: minimal checks (build and packaged server startup)"
+}
 
 if (Test-Path $Release) {
     Remove-Item $Release -Recurse -Force
@@ -77,19 +84,23 @@ if (Test-Path $Release) {
 New-Item -ItemType Directory -Path $Release -Force | Out-Null
 
 Push-Location $Frontend
-npm ci
+npm ci --no-audit --no-fund
 Assert-NativeSuccess "npm ci"
-npm audit --omit=dev --audit-level=high
-Assert-NativeSuccess "npm audit"
+if ($FullChecks) {
+    npm audit --omit=dev --audit-level=high
+    Assert-NativeSuccess "npm audit"
+}
 npm run build
 Assert-NativeSuccess "Frontend build"
-$NpmSbom = (npm sbom --sbom-format cyclonedx) -join [Environment]::NewLine
-Assert-NativeSuccess "npm SBOM generation"
-[IO.File]::WriteAllText(
-    (Join-Path $Release "sbom-npm.cdx.json"),
-    $NpmSbom,
-    [Text.UTF8Encoding]::new($false)
-)
+if ($FullChecks) {
+    $NpmSbom = (npm sbom --sbom-format cyclonedx) -join [Environment]::NewLine
+    Assert-NativeSuccess "npm SBOM generation"
+    [IO.File]::WriteAllText(
+        (Join-Path $Release "sbom-npm.cdx.json"),
+        $NpmSbom,
+        [Text.UTF8Encoding]::new($false)
+    )
+}
 Pop-Location
 
 Push-Location $Backend
@@ -124,14 +135,20 @@ else {
     Write-Host "Release environment: standard venv"
 }
 
-& $BuildPython -m pip install --requirement requirements-audit.txt
+$Requirements = "requirements-build.txt"
+if ($FullChecks) {
+    $Requirements = "requirements-audit.txt"
+}
+& $BuildPython -m pip install --requirement $Requirements
 Assert-NativeSuccess "Python dependency installation"
-& $BuildPython -m pip_audit --requirement requirements-build.txt
-Assert-NativeSuccess "Python dependency audit"
-& $BuildPython -m pip_audit --requirement requirements.txt --format cyclonedx-json --output (Join-Path $Release "sbom-python.cdx.json")
-Assert-NativeSuccess "Python SBOM generation"
-& $BuildPython -m unittest discover -s tests -v
-Assert-NativeSuccess "Backend tests"
+if ($FullChecks) {
+    & $BuildPython -m pip_audit --requirement requirements-build.txt
+    Assert-NativeSuccess "Python dependency audit"
+    & $BuildPython -m pip_audit --requirement requirements.txt --format cyclonedx-json --output (Join-Path $Release "sbom-python.cdx.json")
+    Assert-NativeSuccess "Python SBOM generation"
+    & $BuildPython -m unittest discover -s tests -v
+    Assert-NativeSuccess "Backend tests"
+}
 & $BuildPython -m PyInstaller --noconfirm --clean pbm_app.spec
 Assert-NativeSuccess "PyInstaller build"
 $BundleRoot = (Resolve-Path ".\dist\PBM-Flocculation").Path

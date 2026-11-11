@@ -146,7 +146,8 @@ npm run build
 Pinned runtime and build dependencies are checked with `pip-audit`; the npm
 production tree is checked with `npm audit --omit=dev --audit-level=high`.
 Development CycloneDX snapshots are stored in `docs/`. The Windows build script
-generates release-specific SBOM files from its own clean platform environment.
+with `-FullChecks` generates release-specific SBOM files from its own clean
+platform environment.
 
 The reproducibility report downloaded from the Simulation page records input
 SHA-256 hashes, software/protocol versions, parameter bounds, optimizer
@@ -172,6 +173,17 @@ Anaconda), Node.js 20, and npm installed:
 powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 ```
 
+By default, the script installs dependencies, builds the frontend and `.exe`,
+collects runtime DLLs, and checks that the packaged embedded server starts.
+Dependency audits, backend unit tests, and SBOM generation are optional:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 -FullChecks
+```
+
+The startup check verifies the embedded server; the desktop window still needs
+to be opened on Windows to verify its rendering.
+
 The script looks for 64-bit CPython 3.14 through `py -3.14`, the active Conda
 environment, and `python.exe` on PATH. To select an installation explicitly:
 
@@ -189,8 +201,9 @@ The release is written to `release\PBM-Flocculation`. It is intentionally a
 one-directory package to avoid unpacking the scientific Python stack on every
 startup. Launch `PBM-Flocculation.exe` and distribute the complete folder: the
 adjacent `_internal` directory is required. The folder also contains the legal
-notices, scientific method, validation record, citation, CycloneDX software
-bills of materials, the `_ctypes` runtime DLL manifest, and recursive checksums.
+notices, scientific method, validation record, citation, the `_ctypes` runtime
+DLL manifest, and recursive checksums. Builds with `-FullChecks` also include
+CycloneDX software bills of materials.
 When the selected Python belongs to Anaconda, the script creates and builds
 from a clean Conda environment instead of layering a standard `venv` over the
 Anaconda runtime.
